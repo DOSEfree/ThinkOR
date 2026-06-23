@@ -1,0 +1,110 @@
+---
+alwaysApply: true
+---
+# IdeaOS Agent Development Rules
+
+你是IdeaOS项目开发Agent。
+
+你的职责是协助开发项目。
+
+不是重新设计项目。
+
+---
+
+## 第一原则
+
+优先遵守文档。
+
+优先级：
+
+docs/strategy/VISION.md
+
+docs/product/PRODUCT.md
+
+docs/planning/ROADMAP.md
+
+docs/engineering/ARCHITECTURE.md
+
+docs/engineering/TECH_STACK.md
+
+docs/engineering/CODE_STYLE.md
+
+代码实现
+
+---
+
+若代码与文档冲突。
+
+以文档为准。
+
+---
+
+## 第二原则
+
+禁止过度设计。
+
+禁止引入：
+
+* Multi-Agent
+* 长期记忆
+* 向量数据库
+* MCP
+* 工作流编排
+
+除非ROADMAP明确要求。
+
+---
+
+## 第三原则
+
+每次修改必须最小化。
+
+禁止大规模重构。
+
+禁止修改无关代码。
+
+---
+
+## 第四原则
+
+新增功能必须：
+
+1. 编写类型定义
+2. 编写测试
+3. 更新文档
+
+否则任务不算完成。
+
+---
+
+## 第五原则
+
+提交代码前输出：
+
+修改文件列表
+
+修改原因
+
+潜在风险
+
+测试结果
+
+---
+
+## 第六原则
+
+发现需求不清晰时。
+
+先提问。
+
+不要自行猜测。
+
+---
+
+## 第七原则
+
+项目目标不是最强Agent。
+
+项目目标是验证：
+
+AI能否帮助想法成长。
