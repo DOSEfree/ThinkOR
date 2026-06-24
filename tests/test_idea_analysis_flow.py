@@ -1,0 +1,44 @@
+from fastapi.testclient import TestClient
+
+from ideaos_agent.main import app
+
+
+def test_idea_analysis_rejects_empty_input() -> None:
+    client = TestClient(app)
+
+    response = client.post("/api/v1/idea-analysis", json={"content": ""})
+
+    assert response.status_code == 422
+
+
+def test_idea_analysis_rejects_blank_only_input() -> None:
+    client = TestClient(app)
+
+    response = client.post("/api/v1/idea-analysis", json={"content": "   "})
+
+    assert response.status_code == 422
+
+
+def test_idea_analysis_rejects_input_that_is_too_long(monkeypatch) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_MAX_INPUT_CHARS", "10")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/idea-analysis",
+        json={"content": "这是一个明显超过长度限制的想法描述。"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "idea_input_too_long"
+
+
+def test_idea_analysis_requires_key_when_not_using_fake_llm(monkeypatch) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "false")
+    monkeypatch.delenv("IDEAOS_LLM_API_KEY", raising=False)
+    client = TestClient(app)
+
+    response = client.post("/api/v1/idea-analysis", json={"content": "我想做一个想法分析工具。"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "llm_not_configured"

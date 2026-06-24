@@ -19,3 +19,17 @@ def test_root_exposes_basic_metadata() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
+
+
+def test_idea_analysis_endpoint_returns_fake_response(monkeypatch) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_MAX_INPUT_CHARS", "4000")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/idea-analysis",
+        json={"content": "我想做一个帮助独立开发者验证产品想法的工具。"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["summary"]

@@ -1,226 +1,135 @@
 # IdeaOS-Agent 开发路线图
 
-## Phase 0
+## 路线原则
 
-项目初始化
+v0.1 的唯一目的，是验证一个假设：
 
-预计时长：
+**AI 能否帮一个模糊想法，长出一条可执行的路径，并让用户产生「原来下一步该这样做」的感觉。**
 
-1 到 2 天
+因此本路线图遵循一条铁律：
+
+**先打通一条最薄的端到端链路（Thin Vertical Slice），尽快制造「验证时刻」；再按模块逐段提质。**
+
+不采用「串行造完 N 个独立引擎才第一次跑通」的排期方式——那会把验证时刻推到最后，等于把验证项目当成交付项目来做。
+
+------
+
+## Phase 0：项目初始化
+
+预计时长：1 到 2 天
 
 任务：
 
 - 初始化 Git 与 GitHub 仓库关联
 - 建立 Python 主体项目结构
-- 配置 FastAPI
-- 配置基础 Web 展示层
+- 配置 FastAPI 与最小 Web 展示层
 - 配置环境变量管理方式
 - 配置测试、格式化、类型检查工具
 - 建立文档、版本日志与协作规范
 
-当前收尾重点：
+收尾重点：
 
 - 确认 Python `3.13` 环境为默认开发基线
 - 确认最小 FastAPI 服务可启动
 - 补齐 `.env.example`
-- 初始化本地 Git 并关联 GitHub 远程仓库
 
-目标：
-
-项目可以在本地稳定运行，并具备后续迭代基础。
+目标：项目可在本地稳定运行，具备后续迭代基础。
 
 ------
 
-## Phase 1
+## Phase 1：端到端薄纵切（验证里程碑）
 
-Idea Analyzer
+预计时长：1 到 2 天
 
-预计时长：
-
-3 天
+这是整个 v0.1 最关键的一步。
 
 输入：
 
-用户原始想法
+用户提交的一段原始想法文本
+
+处理：
+
+**一次** LLM 调用
 
 输出：
 
-结构化想法对象
+一个 `IdeaAnalysis` 对象，**一次性包含全部 9 个模块**：
 
-字段建议：
+1. 想法摘要（Idea Summary）
+2. 可行性分析（Feasibility Analysis）
+3. 市场分析（Market Analysis）
+4. 知识缺口分析（Knowledge Gap）
+5. 资源缺口分析（Resource Gap）
+6. 团队需求分析（Team Requirement）
+7. 相似项目参考（Similar Projects，本阶段仅凭模型已有知识给出，不接外部数据源）
+8. MVP 路线图（MVP Roadmap）
+9. 长期发展路线图（Long-term Roadmap）
 
-- title
-- problem
-- target_users
-- solution
-- innovation_points
-- assumptions
+质量要求：
 
-目标：
+**允许粗糙，但必须完整、必须端到端跑通。**
 
-将自然语言想法转化为结构化数据。
-
-------
-
-## Phase 2
-
-Feasibility Engine
-
-预计时长：
-
-3 天
-
-输出：
-
-- 技术可行性
-- 市场可行性
-- 资源可行性
-
-评分范围：
-
-1 到 10
+本阶段不追求任何单个模块的深度，只追求「用户输入想法 → 拿到一份完整的结构化结果」这条链路真实可演示。
 
 目标：
 
-给出可解释、可讨论的初步判断。
+第一次产生可拿去要反馈的产物，验证核心假设是否成立。在此之前的任何模块打磨都属于过早投入。
+
+当前状态补记：
+
+- 链路已经完成真实模型联调，能够返回完整 `IdeaAnalysis`
+- 下一步优先事项不是扩展新能力，而是校准 prompt 与结果质量，使分析内容更贴合用户真实输入
 
 ------
 
-## Phase 3
+## Phase 2：逐段提质（在已跑通的纵切上迭代）
 
-Knowledge Gap Engine
+预计时长：按需，每段独立、可任意顺序、各自可单独发布
 
-预计时长：
+在 Phase 1 跑通之后，剩余工作不再是「依次造完才能用」，而是「每一天某一段变得更好」。
 
-3 天
+每个模块都是对同一份输出契约中某一字段的**提质**，而不是新建一条独立链路。是否值得为某一段拆出独立的 prompt / 逻辑，由验证反馈决定——很可能有些段落根本不需要独立引擎。
 
-输出：
+候选提质方向（按反馈优先级动态排序，不强制串行）：
 
-所需知识领域
+- **可行性**：从一段文字，细化为「技术 / 市场 / 资源」三维，附 1–10 评分与解释
+- **知识缺口**：结构化为所需知识领域清单（如 Computer Vision、LLM、Mobile、Hardware）
+- **资源缺口**：结构化为缺失资源清单（如 Dataset、Funding、Hardware、Domain Experts）
+- **团队需求**：结构化为推荐角色清单（如 PM、Backend、AI、Hardware Engineer）
+- **MVP / 长期路线图**：细化为分阶段路径（MVP → Beta → Product → Commercialization）
+- **想法结构化**：将原始想法抽取为 title / problem / target_users / solution / innovation_points / assumptions 等字段
 
-示例：
+原则：
 
-- Computer Vision
-- LLM
-- Mobile Development
-- Hardware Design
-
-目标：
-
-告诉用户为了推进这个想法，需要补哪些能力。
+每一次提质都必须保持整条链路依然可跑通、可演示。不允许为了某一段的完美而打断端到端可用性。
 
 ------
 
-## Phase 4
+## Phase 3：打磨与发布准备
 
-Resource Gap Engine
-
-预计时长：
-
-2 天
-
-输出：
-
-缺失资源清单
-
-示例：
-
-- Dataset
-- Funding
-- Hardware
-- Domain Experts
-
-目标：
-
-揭示容易被忽略的资源约束。
-
-------
-
-## Phase 5
-
-Team Builder Engine
-
-预计时长：
-
-2 天
-
-输出：
-
-推荐团队角色
-
-示例：
-
-- Product Manager
-- Backend Engineer
-- AI Engineer
-- Hardware Engineer
-
-目标：
-
-帮助用户判断需要怎样的团队配置。
-
-------
-
-## Phase 6
-
-Roadmap Generator
-
-预计时长：
-
-5 天
-
-输出：
-
-- Stage 1 MVP
-- Stage 2 Beta
-- Stage 3 Product
-- Stage 4 Commercialization
-
-目标：
-
-生成一条从想法到落地的执行路径。
-
-------
-
-## Phase 7
-
-Similar Project Finder
-
-预计时长：
-
-5 天
-
-数据来源：
-
-- GitHub
-- Product Hunt
-- Papers
-- Startup Database
-
-目标：
-
-帮助用户避免重复造轮子，也帮助校准差异化定位。
-
-------
-
-## Phase 8
-
-打磨与发布准备
-
-预计时长：
-
-1 周
+预计时长：约 1 周
 
 任务：
 
-- 优化 UI
+- 优化展示 UI
 - 支持导出 PDF
-- 支持结果历史记录
-- 支持分享
 - 完善文档
 - 准备演示视频
 - 完成 GitHub README
+- 收集第一批真实用户反馈
 
-目标：
+目标：完成 v0.1 对外发布，并拿到第一批反馈。
 
-完成 v0.1 对外发布。
+------
+
+## 明确延后（v0.2 候选，不进入 v0.1）
+
+以下能力虽在范围内被提及，但**不在验证核心假设的关键路径上**，且会显著增加复杂度，故明确延后：
+
+- **Similar Project Finder 接入外部数据源**（GitHub / Product Hunt / Papers / Startup Database）
+  - 原因：这是爬虫 / 外部 API 配额 / 数据清洗的工程负担，与「优先简单架构」冲突。
+  - v0.1 内，相似项目一栏仅由模型已有知识给出即可，足以验证体验假设。
+- 历史记录存储、用户项目空间、结果编辑与分享
+- 任何形式的多 Agent、长期记忆、向量库、工作流引擎
+
+这些方向待 v0.1 拿到真实反馈、核心假设被验证后再评估。

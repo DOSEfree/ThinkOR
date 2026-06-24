@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from ideaos_agent.api.idea_analysis import router as idea_analysis_router
 from ideaos_agent.config import get_settings
 
 
@@ -22,6 +23,8 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.include_router(idea_analysis_router)
 
     return app
 

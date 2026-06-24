@@ -3,6 +3,10 @@
 import os
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def _parse_bool(value: str | None, *, default: bool = False) -> bool:
     """Parse a boolean-like environment variable value."""
@@ -19,6 +23,13 @@ class AppSettings:
     app_name: str = "IdeaOS-Agent"
     environment: str = "development"
     debug: bool = False
+    llm_provider: str = "alibaba_compatible"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: float = 30.0
+    max_input_chars: int = 4000
+    use_fake_llm: bool = False
 
 
 def get_settings() -> AppSettings:
@@ -28,4 +39,11 @@ def get_settings() -> AppSettings:
         app_name=os.getenv("IDEAOS_APP_NAME", "IdeaOS-Agent"),
         environment=os.getenv("IDEAOS_ENV", "development"),
         debug=_parse_bool(os.getenv("IDEAOS_DEBUG"), default=False),
+        llm_provider=os.getenv("IDEAOS_LLM_PROVIDER", "alibaba_compatible"),
+        llm_base_url=os.getenv("IDEAOS_LLM_BASE_URL", ""),
+        llm_api_key=os.getenv("IDEAOS_LLM_API_KEY", ""),
+        llm_model=os.getenv("IDEAOS_LLM_MODEL", ""),
+        llm_timeout_seconds=float(os.getenv("IDEAOS_LLM_TIMEOUT_SECONDS", "30")),
+        max_input_chars=int(os.getenv("IDEAOS_MAX_INPUT_CHARS", "4000")),
+        use_fake_llm=_parse_bool(os.getenv("IDEAOS_USE_FAKE_LLM"), default=False),
     )

@@ -81,6 +81,7 @@ python -m uvicorn ideaos_agent.main:app --reload
 默认健康检查地址：
 
 - `http://127.0.0.1:8000/health`
+- 项目会自动读取根目录 `.env`，因此真实 `API key` 只需保存在本地 `.env` 中，不会进入 GitHub 版本管理
 
 ## 质量检查
 

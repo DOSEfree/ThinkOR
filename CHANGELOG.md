@@ -18,11 +18,24 @@
 - 建立 GitHub 项目管理建议
 - 建立最小 FastAPI 服务入口
 - 建立 `.env.example` 环境变量示例
+- 新增 Phase 1 薄纵切设计方案
+- 新增 Phase 1 单次 LLM 调用的端到端薄纵切实现
+- 新增分层 LLM 调用链路（api / application / domain / infrastructure / prompts）
+- 新增 fake LLM client 与真实 HTTP LLM client
+- 新增 `.env` 自动加载与项目级密钥配置支持
+- 新增 Phase 1 输入校验、错误映射与最小联调测试
 
 ### 变更
 
 - 将开发基线统一到 `conda + Python 3.13 + pip`
 - 更新 `README` 的环境安装、运行和质量检查说明
+- 将 LLM 接入策略固定为“本地 `.env` 保存真实密钥，`.env.example` 保留模板”
+- 将默认 LLM 超时配置调整到更适合真实模型调用的 90 秒
+
+### 验证
+
+- 已使用真实阿里兼容接口完成 Phase 1 链路联调，成功返回 `IdeaAnalysis` JSON
+- 已确认当前下一阶段重点从“链路打通”转向“结果质量校准”
 
 ## [0.1.0-init] - 2026-06-15
 
