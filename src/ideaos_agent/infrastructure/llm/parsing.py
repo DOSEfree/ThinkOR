@@ -6,20 +6,20 @@ from json import JSONDecodeError
 from pydantic import ValidationError
 
 from ideaos_agent.domain.errors import LlmResponseFormatError
-from ideaos_agent.models import IdeaAnalysis
+from ideaos_agent.models import IdeaAnalysisResponse
 
 
-def parse_idea_analysis_response(raw_text: str) -> IdeaAnalysis:
-    """Parse raw LLM output into the Phase 1 IdeaAnalysis contract."""
+def parse_idea_analysis_response(raw_text: str) -> IdeaAnalysisResponse:
+    """Parse raw LLM output into the current response wrapper contract."""
 
     normalized = _strip_code_fence(raw_text)
     payload = _parse_json_object(normalized)
     coerced = _coerce_payload(payload)
 
     try:
-        return IdeaAnalysis.model_validate(coerced)
+        return IdeaAnalysisResponse.model_validate(coerced)
     except ValidationError as exc:
-        raise LlmResponseFormatError("LLM 返回无法解析为 IdeaAnalysis。") from exc
+        raise LlmResponseFormatError("LLM 返回无法解析为 IdeaAnalysisResponse。") from exc
 
 
 def _strip_code_fence(raw_text: str) -> str:
@@ -58,6 +58,8 @@ def _coerce_payload(payload: dict[str, object]) -> dict[str, object]:
     """Apply minimal local coercion before Pydantic validation."""
 
     list_fields = {
+        "assumptions",
+        "open_questions",
         "knowledge_gaps",
         "resource_gaps",
         "team_requirements",
@@ -68,6 +70,12 @@ def _coerce_payload(payload: dict[str, object]) -> dict[str, object]:
     coerced: dict[str, object] = {}
 
     for key, value in payload.items():
+        if key == "analysis" and value is None:
+            coerced[key] = None
+            continue
+        if key == "analysis" and isinstance(value, dict):
+            coerced[key] = _coerce_payload(value)
+            continue
         if key in list_fields and isinstance(value, str):
             coerced[key] = [value.strip()] if value.strip() else []
             continue

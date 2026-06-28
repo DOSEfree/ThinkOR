@@ -42,3 +42,31 @@ def test_idea_analysis_requires_key_when_not_using_fake_llm(monkeypatch) -> None
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "llm_not_configured"
+
+
+def test_idea_analysis_accepts_clarifications_with_fake_llm(monkeypatch) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "我想做一个帮助独立开发者验证产品想法的工具。",
+            "clarifications": [
+                {
+                    "question": "你最想帮用户验证什么？",
+                    "answer": "我最想先帮助他们判断想法值不值得继续做。",
+                },
+                {
+                    "question": "你希望输出偏建议还是偏执行计划？",
+                    "answer": "先给建议，再给一个轻量计划。",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["input_echo"] == "我想做一个帮助独立开发者验证产品想法的工具。"
+    assert body["needs_clarification"] is False
+    assert body["analysis"]["summary"]

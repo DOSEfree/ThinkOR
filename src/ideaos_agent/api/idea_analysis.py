@@ -13,7 +13,7 @@ from ideaos_agent.domain.errors import (
     LlmResponseFormatError,
     LlmTimeoutError,
 )
-from ideaos_agent.models import IdeaAnalysis, IdeaInput
+from ideaos_agent.models import IdeaAnalysisResponse, IdeaInput
 
 router = APIRouter(prefix="/api/v1", tags=["idea-analysis"])
 IdeaAnalysisServiceDependency = Annotated[
@@ -22,11 +22,11 @@ IdeaAnalysisServiceDependency = Annotated[
 ]
 
 
-@router.post("/idea-analysis", response_model=IdeaAnalysis)
+@router.post("/idea-analysis", response_model=IdeaAnalysisResponse)
 def create_idea_analysis(
     payload: IdeaInput,
     service: IdeaAnalysisServiceDependency,
-) -> IdeaAnalysis:
+) -> IdeaAnalysisResponse:
     """Generate a full IdeaAnalysis with a single LLM call."""
 
     try:

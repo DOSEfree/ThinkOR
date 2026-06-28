@@ -32,4 +32,7 @@ def test_idea_analysis_endpoint_returns_fake_response(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["summary"]
+    body = response.json()
+    assert body["input_echo"] == "我想做一个帮助独立开发者验证产品想法的工具。"
+    assert body["needs_clarification"] is True
+    assert body["analysis"] is None
