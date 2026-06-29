@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="/static/swiss.css">
+</head>
+<body class="page">
+  <main class="page-grid">
+    <header class="page-header">
+      <div class="page-title-row">
+        <h1 class="page-title">{{ app_name }}</h1>
+        <div class="dot-matrix" aria-hidden="true">
+          {% for _ in range(24) %}
+          <span class="dot-matrix-cell"></span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="header-rule" aria-hidden="true"></div>
+    </header>
+
+    <section class="idea-panel" aria-labelledby="idea-panel-title">
+      <div class="section-head section-head-single">
+        <h2 class="section-title" id="idea-panel-title">RAW IDEA / 原始想法</h2>
+      </div>
+      <form class="idea-form" id="idea-form">
+        <label class="idea-label" for="idea-content">
+          输入一句原始想法，系统将先判断它是否已经形成可分析的解决方案轮廓。
+        </label>
+        <textarea
+          class="idea-textarea"
+          id="idea-content"
+          name="content"
+          rows="8"
+          placeholder="例如：我想做一个帮助独立开发者快速验证产品想法的工具。"
+          required
+        ></textarea>
+        <div class="idea-actions">
+          <button class="idea-submit" id="idea-submit" type="submit">分析 / ANALYZE</button>
+          <button class="idea-reset" id="idea-reset" type="button">重置 / RESET</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="result-shell" id="result-shell" aria-live="polite">
+      <div class="result-placeholder" id="result-placeholder">
+        <div class="section-head">
+          <span class="section-index">01</span>
+          <h2 class="section-title">RESULT / 结果区</h2>
+        </div>
+        <p class="result-placeholder-copy">
+          提交后，这里将显示澄清问题或完整分析。
+        </p>
+      </div>
+
+      <div class="result-error hidden" id="result-error" role="alert"></div>
+      <div class="result-content hidden" id="result-content"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

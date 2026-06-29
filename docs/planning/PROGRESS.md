@@ -28,10 +28,13 @@
 - [x] 实现 P1：想法 = 结构化状态（content + clarifications）
 - [x] 用真实模型复跑诊断输入并完成新旧输出对照
 - [x] 补齐 `input_echo` 契约并抬高澄清门槛，完成 5 条真实输入校准
+- [x] 完成极简可用界面（Swiss Style）设计评审
+- [x] 实现极简可用界面（单页 + fetch + Swiss Style）
+- [x] 根据首轮试用反馈微调界面信息层级与追问保留逻辑
 - [ ] 清理 `TestClient/httpx` 兼容性 warning（低优先级技术债）
 
 ## Phase 3：打磨与发布准备
 
 - [ ] 待开始
 
-当前下一步：复审分析模式下的 assumptions 与 open_questions 是否仍有过度扩写倾向，并决定是否继续细化 prompt 边界。
+当前下一步：基于当前可运行界面，规划下一轮优先级，决定先继续前端易用性微调，还是回到分析质量与 prompt 校准。

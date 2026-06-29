@@ -1,9 +1,15 @@
-"""Minimal FastAPI application for Phase 0 initialization."""
+"""Minimal FastAPI application for the current IdeaOS-Agent slices."""
+
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from ideaos_agent.api.idea_analysis import router as idea_analysis_router
 from ideaos_agent.config import get_settings
+from ideaos_agent.presentation.web import router as presentation_router
+
+STATIC_DIR = Path(__file__).resolve().parent / "presentation" / "static"
 
 
 def create_app() -> FastAPI:
@@ -24,6 +30,8 @@ def create_app() -> FastAPI:
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.include_router(presentation_router)
     app.include_router(idea_analysis_router)
 
     return app
