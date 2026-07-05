@@ -33,6 +33,9 @@
 
 - 将开发基线统一到 `conda + Python 3.13 + pip`
 - 更新 `README` 的环境安装、运行和质量检查说明
+- 明确项目默认开发环境为 `ideaos-agent`，并补充 Agent 执行 Python 命令前的环境确认约定
+- 补充测试依赖 `httpx2`，收口 `TestClient/httpx` 兼容性 warning
+- 更新状态文档口径，使其反映 `v0.1` 当前稳定状态，并删除未使用的本地 `issue/` 目录
 - 将 LLM 接入策略固定为“本地 `.env` 保存真实密钥，`.env.example` 保留模板”
 - 将默认 LLM 超时配置调整到更适合真实模型调用的 90 秒
 - 补齐外层 `input_echo` 契约，并将澄清模式从默认行为校准为例外行为

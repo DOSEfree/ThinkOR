@@ -47,6 +47,16 @@ Agent 在完成一次任务后，应尽量明确输出：
 
 ------
 
+## 环境约定
+
+- 项目默认开发环境为 Conda 环境 `ideaos-agent`
+- Agent 在执行任何 Python 相关命令前，应先确认当前终端不在 `base`，且已切换到 `ideaos-agent`
+- 适用命令包括：依赖安装、`pytest`、`ruff`、`mypy`、`uvicorn`、诊断脚本与其他项目级 Python 命令
+- 如需核验，优先检查 `CONDA_DEFAULT_ENV`、`python --version` 与 `python` 可执行文件路径
+- 项目文档、测试与 CI 的 Python 基线统一为 `3.13`
+
+------
+
 ## 变更边界
 
 未经明确批准，不应主动做以下事情：

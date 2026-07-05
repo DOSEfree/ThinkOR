@@ -6,13 +6,13 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 
 ## 当前阶段
 
-当前仓库处于 `v0.1` 初始化阶段，重点工作包括：
+当前仓库已经具备代表 `v0.1` 当前稳定状态的最小闭环，重点成果包括：
 
-- 明确产品边界
-- 固化 Python 主体技术栈
-- 建立文档与协作规则
-- 建立 GitHub 项目管理与版本管理基线
-- 建立最小可运行服务入口与环境变量约定
+- 明确产品边界与交互模型主线
+- 固化 Python 主体技术栈与工程基线
+- 建立文档、版本日志与 GitHub 协作规则
+- 跑通单次分析链路与无状态单轮澄清链路
+- 提供最小可运行 Web 界面与项目级环境约定
 
 ## v0.1 核心能力
 
@@ -58,7 +58,7 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 说明：
 
 - 项目当前以 Python `3.13` 作为主开发与 CI 基线。
-- 后续如果需要，也可以评估 `uv`，但初始化阶段先保持 `conda + pip` 的低门槛方案。
+- 后续如果需要，也可以评估 `uv`，但当前阶段先保持 `conda + pip` 的低门槛方案。
 
 ## 初始化命令
 
@@ -68,6 +68,17 @@ conda activate ideaos-agent
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
+
+## 环境约定
+
+本项目默认开发环境为 Conda 环境 `ideaos-agent`。
+
+说明：
+
+- 新开 PowerShell 终端时，系统仍可能先落在 `base`，这不代表项目环境配置有误
+- 进入本项目后，如需运行 `pytest`、`ruff`、`mypy`、`uvicorn`、诊断脚本或依赖安装命令，应先切换到 `ideaos-agent`
+- 推荐在执行命令前快速确认当前环境，例如检查 `CONDA_DEFAULT_ENV` 是否为 `ideaos-agent`
+- 项目开发、测试与 CI 的 Python 基线统一为 `3.13`
 
 ## 本地运行
 
@@ -98,14 +109,14 @@ python -m ruff format .
 python -m mypy src
 ```
 
-## 初始化收尾清单
+## v0.1 收口检查
 
-除了关联 GitHub 仓库之外，当前初始化阶段还应确认以下事项：
+当前阶段建议至少确认以下事项：
 
 - 最小 FastAPI 服务可以在本地启动
 - `.env.example` 已覆盖当前环境变量约定
 - `pytest`、`ruff`、`mypy` 能在 Python `3.13` 环境中通过
-- 清理本地生成物后再初始化 Git，保证首次提交足够干净
+- `main` 分支能够代表当前稳定主线，并承接后续 `v0.2` 规划
 
 ## 版本管理
 
