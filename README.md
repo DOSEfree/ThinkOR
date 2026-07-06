@@ -6,13 +6,19 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 
 ## 当前阶段
 
-当前仓库已经具备代表 `v0.2.0` 的完整最小闭环，重点成果包括：
+当前仓库已完成 `v0.2.0` 的归档闭环，并已基本收口 `v0.2.5` 的 follow-up 能力，重点成果包括：
 
 - 保留 `v0.1` 已验证完成的单次分析链路与单轮澄清模型
 - 引入 `session_id / archive_status / archive_url` 会话归档契约
 - 接入本地 `SQLite` 最小索引，沉淀会话状态与归档结果
 - 接入飞书文档归档能力，将完整有效分析保存为可回看的资产
 - 在最小 Web 界面中展示归档状态与飞书文档链接
+- 支持基于当前已完成结果继续发起 bounded follow-up，并在确认后合成新版完整方案
+
+当前仍然明确延后的能力：
+
+- 历史记录列表与线程导航：计划放入 `v0.3`
+- 自动跨会话长期记忆：仍然不是当前产品目标
 
 ## v0.2.0 核心能力
 
@@ -106,6 +112,8 @@ python -m uvicorn ideaos_agent.main:app --reload
 
 - `/app`：极简可用前端界面，可直接输入想法、回答澄清问题、查看分析结果与归档状态
 - `/api/v1/idea-analysis`：后端 JSON 接口，返回分析内容以及 `session_id / archive_status / archive_url`
+- `/api/v1/follow-up/refine`：基于已完成 session 发起一次有界的 follow-up 完善
+- `/api/v1/follow-up/compose-full-plan`：在用户确认局部修改后生成新版完整方案
 
 归档相关说明：
 
@@ -122,7 +130,7 @@ python -m ruff format .
 python -m mypy src
 ```
 
-## v0.2.0 收口检查
+## v0.2.x 收口检查
 
 当前阶段建议至少确认以下事项：
 
@@ -131,6 +139,8 @@ python -m mypy src
 - `pytest`、`ruff`、`mypy` 能在 Python `3.13` 环境中通过
 - 完成态分析会返回 `session_id / archive_status / archive_url`
 - 开启真实飞书归档后，可为同一会话生成文档并返回链接
+- 基于当前结果发起 follow-up 时，可得到局部完善结果并继续归档
+- 用户确认修改后，可生成新版完整方案且不覆盖原 session
 
 ## 版本管理
 

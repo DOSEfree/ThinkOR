@@ -243,3 +243,24 @@ def test_stateless_request_contains_entire_idea_state() -> None:
     assert "【原始想法】" in prompt
     assert "【已有澄清回答】" in prompt
     assert "先验证这个想法值不值得继续推进。" in prompt
+
+
+def test_prompt_explicitly_lists_required_analysis_fields() -> None:
+    service, client = build_service(
+        [
+            {
+                "archive_title": "独立开发者产品验证工具",
+                "input_echo": "我想做一个帮助独立开发者验证产品想法的工具。",
+                "needs_clarification": True,
+                "assumptions": [],
+                "open_questions": ["你最想验证什么？", "用户输入什么，系统输出什么？"],
+                "analysis": None,
+            }
+        ]
+    )
+
+    service.analyze(IdeaInput(content="我想做一个帮助独立开发者验证产品想法的工具。"))
+
+    prompt = client.calls[0]["user_prompt"]
+    assert "analysis 的字段名必须严格为" in prompt
+    assert "summary, feasibility, market" in prompt

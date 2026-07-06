@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
-from ideaos_agent.domain.archive import SessionArchivePayload, SessionClarificationRecord
+from ideaos_agent.domain.analysis import IdeaAnalysis
+from ideaos_agent.domain.archive import SessionArchivePayload
+from ideaos_agent.domain.session import SessionClarificationRecord, SessionKind
 from ideaos_agent.infrastructure.archive.feishu_doc_renderer import (
     build_feishu_archive_title,
     render_feishu_archive_xml,
@@ -10,6 +12,9 @@ from ideaos_agent.infrastructure.archive.feishu_doc_renderer import (
 def build_payload() -> SessionArchivePayload:
     return SessionArchivePayload(
         session_id="sess_archive",
+        parent_session_id=None,
+        parent_archive_url=None,
+        session_kind=SessionKind.ANALYSIS,
         archive_title="独立开发者产品验证工具",
         original_content="我想做一个帮助独立开发者验证产品想法的工具。",
         input_echo="我想做一个帮助独立开发者验证产品想法的工具。",
@@ -21,15 +26,19 @@ def build_payload() -> SessionArchivePayload:
         ],
         assumptions=["假设它以 Web 形式提供。"],
         open_questions=["是否需要在首版支持报告分享？"],
-        summary="这是一个帮助独立开发者验证产品想法的 Web 工具。",
-        feasibility="技术可行。",
-        market="目标用户较明确。",
-        knowledge_gaps=["产品验证方法"],
-        resource_gaps=["种子用户"],
-        team_requirements=["产品负责人"],
-        similar_projects=["创业想法分析工具"],
-        mvp_roadmap=["定义最小输入输出"],
-        long_term_roadmap=["迭代交互体验"],
+        follow_up_question=None,
+        analysis=IdeaAnalysis(
+            summary="这是一个帮助独立开发者验证产品想法的 Web 工具。",
+            feasibility="技术可行。",
+            market="目标用户较明确。",
+            knowledge_gaps=["产品验证方法"],
+            resource_gaps=["种子用户"],
+            team_requirements=["产品负责人"],
+            similar_projects=["创业想法分析工具"],
+            mvp_roadmap=["定义最小输入输出"],
+            long_term_roadmap=["迭代交互体验"],
+        ),
+        refinement_result=None,
         created_at=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
         completed_at=datetime(2026, 7, 5, 10, 5, tzinfo=UTC),
     )

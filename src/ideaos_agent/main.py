@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from ideaos_agent.api.follow_up import router as follow_up_router
 from ideaos_agent.api.idea_analysis import router as idea_analysis_router
 from ideaos_agent.config import get_settings
 from ideaos_agent.presentation.web import router as presentation_router
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(presentation_router)
     app.include_router(idea_analysis_router)
+    app.include_router(follow_up_router)
 
     return app
 

@@ -1,4 +1,4 @@
-"""Application-layer session orchestration for idea analysis responses."""
+"""Application-layer session orchestration for root idea analysis responses."""
 
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -10,24 +10,31 @@ from ideaos_agent.domain.archive import (
     SessionArchivePayload,
     SessionArchiver,
     SessionArchiveStore,
-    SessionClarificationRecord,
     SessionRecord,
+)
+from ideaos_agent.domain.session import (
+    SessionClarificationRecord,
+    SessionKind,
+    SessionSnapshot,
+    SessionSnapshotStore,
 )
 from ideaos_agent.models import IdeaAnalysisLlmOutput, IdeaAnalysisResponse, IdeaInput
 
 
 class IdeaAnalysisSessionService:
-    """Attach session metadata and archive state around the core analysis flow."""
+    """Attach session metadata, snapshots, and archive state around root analysis."""
 
     def __init__(
         self,
         *,
         analysis_service: IdeaAnalysisService,
         session_archive_store: SessionArchiveStore,
+        session_snapshot_store: SessionSnapshotStore,
         session_archiver: SessionArchiver,
     ) -> None:
         self._analysis_service = analysis_service
         self._session_archive_store = session_archive_store
+        self._session_snapshot_store = session_snapshot_store
         self._session_archiver = session_archiver
 
     def analyze(self, payload: IdeaInput) -> IdeaAnalysisResponse:
@@ -36,23 +43,28 @@ class IdeaAnalysisSessionService:
         session_id = resolve_session_id(payload.session_id)
         llm_output = self._analysis_service.analyze(payload)
         archive_status = determine_archive_status(llm_output)
-        archive_url = None
 
         session_record = self.build_session_record(
             payload=payload,
             session_id=session_id,
             llm_output=llm_output,
             archive_status=archive_status,
-            archive_url=archive_url,
+            archive_url=None,
         )
         persisted_record = self._session_archive_store.save_session_record(session_record)
 
         final_record = persisted_record
         if persisted_record.archive_status == ArchiveStatus.PENDING:
-            archive_payload = self.build_archive_payload(
+            snapshot = self.build_completed_snapshot(
                 payload=payload,
                 session_record=persisted_record,
                 llm_output=llm_output,
+            )
+            persisted_snapshot = self._session_snapshot_store.save_session_snapshot(snapshot)
+
+            archive_payload = self.build_archive_payload(
+                session_record=persisted_record,
+                snapshot=persisted_snapshot,
             )
             archive_result = self.try_archive_session(archive_payload)
             final_record = self.apply_archive_result(
@@ -60,9 +72,18 @@ class IdeaAnalysisSessionService:
                 archive_result=archive_result,
             )
             final_record = self._session_archive_store.save_session_record(final_record)
+            updated_snapshot = persisted_snapshot.model_copy(
+                update={
+                    "archived_at": archive_result.archived_at,
+                    "updated_at": archive_result.archived_at,
+                }
+            )
+            self._session_snapshot_store.save_session_snapshot(updated_snapshot)
 
         return IdeaAnalysisResponse(
             session_id=session_id,
+            session_kind=SessionKind.ANALYSIS,
+            parent_session_id=None,
             archive_status=final_record.archive_status,
             archive_url=final_record.archive_url,
             **llm_output.model_dump(),
@@ -77,7 +98,7 @@ class IdeaAnalysisSessionService:
         archive_status: ArchiveStatus,
         archive_url: str | None,
     ) -> SessionRecord:
-        """Create the minimal typed session record used by later archive milestones."""
+        """Create the minimal typed session record used by archive milestones."""
 
         completed_at = None
         if archive_status != ArchiveStatus.NOT_TRIGGERED:
@@ -85,6 +106,8 @@ class IdeaAnalysisSessionService:
 
         return SessionRecord(
             session_id=session_id,
+            parent_session_id=None,
+            session_kind=SessionKind.ANALYSIS,
             original_content=payload.content,
             input_echo=llm_output.input_echo,
             clarification_count=len(payload.clarifications),
@@ -93,22 +116,24 @@ class IdeaAnalysisSessionService:
             completed_at=completed_at,
         )
 
-    def build_archive_payload(
+    def build_completed_snapshot(
         self,
         *,
         payload: IdeaInput,
         session_record: SessionRecord,
         llm_output: IdeaAnalysisLlmOutput,
-    ) -> SessionArchivePayload:
-        """Build the full archive payload for external archive adapters."""
+    ) -> SessionSnapshot:
+        """Build the structured snapshot needed for follow-up reasoning."""
 
         if llm_output.analysis is None:
-            raise ValueError("完成态归档要求存在完整 analysis。")
+            raise ValueError("Completed root analysis snapshots require analysis.")
         if session_record.completed_at is None:
-            raise ValueError("完成态归档要求 session_record.completed_at 已存在。")
+            raise ValueError("Completed root analysis snapshots require completed_at.")
 
-        return SessionArchivePayload(
+        return SessionSnapshot(
             session_id=session_record.session_id,
+            parent_session_id=None,
+            session_kind=SessionKind.ANALYSIS,
             archive_title=llm_output.archive_title,
             original_content=payload.content,
             input_echo=llm_output.input_echo,
@@ -118,17 +143,36 @@ class IdeaAnalysisSessionService:
             ],
             assumptions=llm_output.assumptions,
             open_questions=llm_output.open_questions,
-            summary=llm_output.analysis.summary,
-            feasibility=llm_output.analysis.feasibility,
-            market=llm_output.analysis.market,
-            knowledge_gaps=llm_output.analysis.knowledge_gaps,
-            resource_gaps=llm_output.analysis.resource_gaps,
-            team_requirements=llm_output.analysis.team_requirements,
-            similar_projects=llm_output.analysis.similar_projects,
-            mvp_roadmap=llm_output.analysis.mvp_roadmap,
-            long_term_roadmap=llm_output.analysis.long_term_roadmap,
-            created_at=session_record.created_at,
+            analysis=llm_output.analysis,
+            refinement_result=None,
             completed_at=session_record.completed_at,
+            updated_at=session_record.completed_at,
+        )
+
+    def build_archive_payload(
+        self,
+        *,
+        session_record: SessionRecord,
+        snapshot: SessionSnapshot,
+    ) -> SessionArchivePayload:
+        """Build the external archive payload from the completed root snapshot."""
+
+        return SessionArchivePayload(
+            session_id=session_record.session_id,
+            parent_session_id=None,
+            parent_archive_url=None,
+            session_kind=SessionKind.ANALYSIS,
+            archive_title=snapshot.archive_title,
+            original_content=snapshot.original_content,
+            input_echo=snapshot.input_echo,
+            clarifications=snapshot.clarifications,
+            assumptions=snapshot.assumptions,
+            open_questions=snapshot.open_questions,
+            follow_up_question=None,
+            analysis=snapshot.analysis,
+            refinement_result=None,
+            created_at=snapshot.created_at,
+            completed_at=snapshot.completed_at,
         )
 
     def try_archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
@@ -141,7 +185,7 @@ class IdeaAnalysisSessionService:
             return ArchiveResult(
                 archive_status=ArchiveStatus.FAILED,
                 archive_url=None,
-                archive_error=f"飞书归档异常：{exc}",
+                archive_error=f"Feishu archive exception: {exc}",
                 archived_at=archived_at,
             )
 

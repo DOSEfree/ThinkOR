@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
 
 from ideaos_agent.domain.archive import ArchiveStatus
@@ -21,7 +24,9 @@ def test_idea_analysis_rejects_blank_only_input() -> None:
     assert response.status_code == 422
 
 
-def test_idea_analysis_rejects_input_that_is_too_long(monkeypatch) -> None:
+def test_idea_analysis_rejects_input_that_is_too_long(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
     monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
     monkeypatch.setenv("IDEAOS_MAX_INPUT_CHARS", "10")
@@ -36,7 +41,9 @@ def test_idea_analysis_rejects_input_that_is_too_long(monkeypatch) -> None:
     assert response.json()["detail"]["code"] == "idea_input_too_long"
 
 
-def test_idea_analysis_requires_key_when_not_using_fake_llm(monkeypatch) -> None:
+def test_idea_analysis_requires_key_when_not_using_fake_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "false")
     monkeypatch.delenv("IDEAOS_LLM_API_KEY", raising=False)
     client = TestClient(app)
@@ -47,7 +54,9 @@ def test_idea_analysis_requires_key_when_not_using_fake_llm(monkeypatch) -> None
     assert response.json()["detail"]["code"] == "llm_not_configured"
 
 
-def test_idea_analysis_accepts_clarifications_with_fake_llm(monkeypatch) -> None:
+def test_idea_analysis_accepts_clarifications_with_fake_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
     monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
     client = TestClient(app)
@@ -80,7 +89,9 @@ def test_idea_analysis_accepts_clarifications_with_fake_llm(monkeypatch) -> None
     assert body["analysis"]["summary"]
 
 
-def test_idea_analysis_reuses_session_id_when_client_resubmits(monkeypatch) -> None:
+def test_idea_analysis_reuses_session_id_when_client_resubmits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
     monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
     client = TestClient(app)
@@ -103,7 +114,10 @@ def test_idea_analysis_reuses_session_id_when_client_resubmits(monkeypatch) -> N
     assert response.json()["session_id"] == "sess_existing"
 
 
-def test_idea_analysis_persists_session_record_to_sqlite(monkeypatch, tmp_path) -> None:
+def test_idea_analysis_persists_session_record_to_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
     monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
     monkeypatch.setenv("IDEAOS_ARCHIVE_DB_PATH", str(tmp_path / "ideaos_agent.db"))

@@ -23,3 +23,15 @@ class LlmRequestError(IdeaOsError):
 
 class LlmResponseFormatError(IdeaOsError):
     """Raised when the LLM output cannot be parsed into IdeaAnalysis."""
+
+    def __init__(self, message: str, *, raw_output: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_output = raw_output
+
+
+class SessionNotFoundError(IdeaOsError):
+    """Raised when a requested session or snapshot cannot be found locally."""
+
+
+class SessionStateError(IdeaOsError):
+    """Raised when a session exists but its state/kind is invalid for an operation."""

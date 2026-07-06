@@ -126,8 +126,11 @@ input {
 }
 
 .section-head-single {
+  display: grid;
   grid-template-columns: 1fr;
   gap: 0;
+  align-items: center;
+  justify-items: start;
 }
 
 .section-title {
@@ -216,7 +219,9 @@ input {
 }
 
 .idea-submit:disabled,
-.question-submit:disabled {
+.question-submit:disabled,
+.secondary-button:disabled,
+.idea-reset:disabled {
   cursor: wait;
   opacity: 0.6;
 }
@@ -238,6 +243,16 @@ input {
   margin: 0;
   color: var(--grey-3);
   line-height: 1.7;
+}
+
+.result-placeholder-copy {
+  max-width: 72rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.questions-shell {
+  margin-top: 20px;
 }
 
 .result-error {
@@ -497,7 +512,6 @@ input {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .analysis-copy {

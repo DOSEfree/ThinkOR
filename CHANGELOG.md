@@ -10,7 +10,31 @@
 
 ## [Unreleased]
 
-- 暂无
+暂无已确认条目。
+
+## [0.2.5] - 2026-07-06
+
+### Added
+
+- 新增 `v0.2.5` follow-up 领域模型与 API 契约，包括 `SessionKind / SessionSnapshot / RefinementResult / FollowUpResponse / ComposedPlanResponse`，用于承接“基于已归档结果继续完善方案”的最小闭环。
+- 新增 follow-up 应用层服务与接口：`POST /api/v1/follow-up/refine` 用于生成局部完善结果，`POST /api/v1/follow-up/compose-full-plan` 用于在用户确认后合成新版完整方案。
+- 新增本地 `SQLite` 结构化快照存储 `session_snapshots`，并为会话索引补充 `parent_session_id / session_kind` 字段，支持沿父 session 继续推理。
+- 新增 follow-up 归档模板与飞书文档渲染能力，支持归档 `analysis / follow_up_refinement / full_plan_composed` 三类 session，并在正文中保留逻辑父子关系信息。
+- 新增 follow-up 单测覆盖，验证局部完善结果生成、父子 session 关系保存、完整方案合成以及归档适配行为。
+
+### Changed
+
+- 根分析链路在完成态时现在会额外保存结构化 analysis snapshot，而不只是最小归档索引，为 `v0.2.5` follow-up 提供可靠的本地状态来源。
+- 本地 fake LLM 与响应解析逻辑已扩展到 follow-up 场景，可在不依赖真实模型的情况下稳定演示“继续完善 -> 澄清 -> 合成完整方案”的交互。
+- 前端 `/app` 已加入“继续完善方案”和“确认修改并生成新版完整方案”入口，并支持从当前展示结果继续发起下一轮 follow-up。
+- 前端结果区现在会区分完整分析、局部完善结果与归档状态，并按当前操作显示对应的加载状态，避免多按钮场景下交互含混。
+
+### Fixed
+
+- 修复真实 LLM 在 follow-up 场景下偶发返回单对象或 `null` 数组字段时的解析脆弱性；本地解析器现在会对 `proposed_section_updates / affected_sections / next_actions` 等字段做最小兼容纠偏。
+- 修复前端在 follow-up 请求失败时将当前结果区整体隐藏的问题；现在错误信息会单独显示，已生成的分析或局部完善结果会继续保留在页面中便于人工调试。
+- 修复重复点击“继续完善方案”会不断插入新的输入面板的问题；当前实现会复用已打开的 follow-up 编辑区，并阻止重复提交。
+- 修复 follow-up 输出板块标题与标签展示不一致的问题，统一为可读的中英文标题格式，避免直接暴露底层字段名。
 
 ## [0.2.0] - 2026-07-06
 

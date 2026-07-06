@@ -2,217 +2,212 @@
 
 ## 当前版本
 
-- `Version`：`v0.2.0`
+- `Version`：`v0.2.5`
 - `Status`：`Release Ready`
-- `Theme`：`Session Archive / Feishu Archive`
-- `Stable Base`：`main` 仍代表 `v0.1` 稳定主线；本次收口以 `release/v0.2.0` 发布分支为准
+- `Theme`：`Archive Follow-up / Plan Refinement`
+- `Stable Base`：`release/v0.2.0` 已完成发布收口，后续实现基于该版本增量推进
+
+------
+
+## v0.2.5 目标
+
+- 基于某次**已完成归档**的结果发起 follow-up
+- 默认产出“局部完善结果”，而不是直接重跑完整九模块
+- 用户可显式选择“确认修改并生成新版完整方案”
+- follow-up 结果继续生成新的 `session_id`，并归档为新的飞书文档
+- 保持单次有界交互：默认直接回答，必要时最多一次澄清
+
+------
+
+## 当前实现快照
+
+- [x] 已落地 follow-up 契约：`FollowUpInput / FollowUpResponse / ComposeFullPlanInput / ComposedPlanResponse`
+- [x] 已引入本地结构化快照：`SessionSnapshot / SessionKind / parent_session_id`
+- [x] 已新增 follow-up API：`/api/v1/follow-up/refine` 与 `/api/v1/follow-up/compose-full-plan`
+- [x] 已支持程序合成“新版完整方案”：仅覆盖受影响板块，未修改板块继承父方案
+- [x] 已支持 follow-up 结果再次归档到飞书，且保留逻辑父子关系
+- [x] 已补前端最小交互：从当前结果继续完善、必要时单轮澄清、确认后生成新版完整方案
+- [x] 已补测试与类型检查，当前实现通过 `pytest / ruff / mypy`
+
+### 收口判断
+
+- [x] `v0.2.5` 的既定里程碑 `M1 ~ M4` 已全部落地
+- [x] 当前实现满足“基于归档结果继续完善 -> 确认后生成新版完整方案 -> 再次归档”的最小闭环
+- [x] 历史记录列表与历史导航未进入本版，但这属于已确认延期范围，不构成 `v0.2.5` 阻塞项
+- [x] 因此当前开发分支可以视为 `v0.2.5` 的发布候选状态，后续工作主轴可转入 `v0.3`
+
+### 当前实现边界
+
+- follow-up 可以连续进行，但入口仍然只围绕“当前正在查看的结果”
+- 前端历史记录列表仍然明确延后到 `v0.3`
+- 飞书当前保留的是逻辑父子关系，不强依赖真实树状挂载结构
 
 ------
 
 ## 已确认决策
 
-- [x] 仅在**最终完成态分析**后触发归档，不为澄清中间态自动创建飞书文档
-- [x] 本地索引使用 `SQLite`
-- [x] 一条完整会话对应一份飞书文档
-- [x] 历史记录用于归档与回看，不默认自动注入下一轮分析
-- [x] `PROGRESS.md` 继续保留，作为当前版本实时进展文档
-- [x] `session_id` 属于系统会话元数据，不进入 prompt，不作为 LLM 输出字段
-- [x] `session_id` 由服务端在首次请求时生成，并在首次响应中返回；后续同一会话请求必须原样带回
-- [x] `archive_status` 采用四态：`not_triggered / pending / succeeded / failed`
-- [x] `archive_url` 仅表示归档成功后的飞书文档链接，不参与 LLM 推理
-- [x] 分析内容契约与 API 响应契约分层：LLM 只生成分析内容，应用层补充会话与归档元数据
+- [x] follow-up 必须显式基于某个已完成会话发起，不做“自动读取全部历史”
+- [x] 每次 follow-up 都创建新的 `session_id`，不覆盖原 session
+- [x] 新 session 至少记录 `parent_session_id`，保留逻辑父子关系
+- [x] follow-up 默认输出“局部完善结果”，不默认重跑完整九模块
+- [x] 用户可在看到局部修改后，再点击“确认修改并生成新版完整方案”
+- [x] `v0.2.5` 首版的“新版完整方案”优先采用程序合成：新修改板块覆盖父方案，未修改板块原样继承
+- [x] follow-up 同样最多只允许一次澄清，继续保持单次有界交互
+- [x] follow-up 归档先创建**新飞书文档**，并在正文中写明父 session 与来源链接
+- [x] 前端历史记录列表不进入 `v0.2.5`，延后到 `v0.3`
 
 ------
 
-## v0.2 目标
+## follow-up 边界
 
-- [x] 定义会话记录与归档契约结构
-- [x] 建立本地 `SQLite` 索引与归档状态跟踪
-- [x] 接入飞书归档链路，生成面向人的会话文档
-- [x] 将归档状态与文档链接回传给前端
-- [x] 保持主分析链路与归档链路解耦
+### 可以连续 follow-up，但不是自由聊天
+
+- 一次 follow-up 请求，仍然只对应一次有边界的分析结果
+- 用户在拿到一个 follow-up 结果后，理论上可以继续基于**最新结果**再发起下一次 follow-up
+- 因此系统层面允许形成：`原始分析 -> follow-up A -> follow-up B -> follow-up C`
+- 但每一步都必须显式选择“基于哪一个父 session 继续”，而不是进入无限上下文闲聊
+
+### 为什么这不等于长期记忆
+
+- 系统只读取用户当前明确指定的父 session
+- 不自动注入其它历史记录
+- 不把所有历史 silently 拼进 prompt
+- 每次 follow-up 仍然是离散、可归档、可回看的单次动作
 
 ------
 
-## v0.2 非目标
+## v0.2.5 非目标
 
-- 不实现自动跨会话长期记忆
-- 不实现多轮自由聊天
-- 不实现飞书双向编辑回写
-- 不引入多 Agent、向量数据库或工作流引擎
-- 不在首版构建完整项目空间
+- 不做多轮自由聊天
+- 不做自动跨会话长期记忆
+- 不做前端历史记录列表
+- 不做“从任意历史树节点可视化跳转”的完整项目空间
+- 不做飞书文档双向编辑回写
+- 不承诺首版就落成真实 Feishu 树状父子结构
+
+------
+
+## 关键工程前提
+
+### 仅靠 v0.2.0 的最小索引还不够
+
+当前 `v0.2.0` 的本地 `SQLite` 只保存最小索引与归档状态，这足以支撑归档与回看，但**不足以支撑 follow-up 推理**。
+
+原因是：
+
+- follow-up 需要读取父 session 的结构化分析内容
+- 不能把飞书文档当作唯一系统状态来源
+- 也不适合在运行时反向解析飞书正文来恢复结构化数据
+
+因此 `v0.2.5` 的第一步，不是先做 UI，而是先补齐**本地结构化会话快照存储**。
 
 ------
 
 ## 里程碑清单
 
-### M1：归档契约与数据模型
+### M1：follow-up 契约与本地快照模型
 
-- [x] 在 `PROGRESS.md` 固化 v0.2 分步实施计划，作为当前版本执行基线
-- [x] 在当前 `PROGRESS.md` 内冻结 M1 设计，不额外拆出独立方案文档
-- [x] 定义 `session_id`、`archive_status`、`archive_url` 等核心字段
-- [x] 明确“完成态归档”与错误处理策略
-- [x] 拆分“LLM 输出模型”与“API 响应模型”，避免系统元数据污染模型契约
+- [x] 定义 `FollowUpInput / FollowUpResponse / RefinementResult` 等新契约
+- [x] 明确 follow-up 与“确认修改并生成新版完整方案”是两个动作，而不是一次请求内混做
+- [x] 定义 `parent_session_id`、`session_kind` 等最小会话关系字段
+- [x] 定义“局部修改 patch”结构：仅返回被修改板块与变更说明
+- [x] 明确连续 follow-up 的规则：允许多次链式继续，但每步必须产生新 session
 
-#### M1 已冻结设计
+#### M1 冻结设计草案
 
-- `session_id`
-  - 服务端生成，首次请求若未携带则创建
-  - 首次响应无论返回澄清态还是分析态，都必须返回 `session_id`
-  - 前端在单轮澄清的第二次请求中必须带回相同 `session_id`
-  - `session_id` 不进入 prompt，不传给 LLM，不由 fake client 生成
-- `archive_status`
-  - `not_triggered`：当前仍是澄清态，未触发归档
-  - `pending`：已进入完成态，归档动作已开始或已被安排
-  - `succeeded`：飞书归档成功，`archive_url` 可用
-  - `failed`：飞书归档失败，但主分析结果仍然正常返回
-- `archive_url`
-  - 仅在归档成功后返回飞书文档链接
-  - 澄清态与归档失败时返回 `null`
-- 完成态判定
-  - 仅当 `needs_clarification=false` 且 `analysis` 完整存在时，触发正式归档
-  - `open_questions` 在分析态下可以继续存在，不影响“完成态”判定
+- 原始分析链路继续使用现有 `IdeaAnalysisResponse`
+- follow-up 新增独立契约，避免污染 `v0.2.0` 的主分析响应模型
+- 建议引入两个动作：
+  1. `follow_up_refine`：生成局部完善结果
+  2. `follow_up_compose_full_plan`：基于上一轮局部修改，合成新版完整方案
+- 新版完整方案首版优先采用程序合成，而不是再次要求 LLM 重写九个板块
 
-#### M1 计划产出
+### M2：本地会话快照与父子关系存储
 
-- 请求契约演进：`IdeaInput` 新增可选 `session_id`
-- 响应契约演进：在当前分析结果外层补充 `session_id / archive_status / archive_url`
-- 领域模型：定义 `ArchiveStatus`、`SessionRecord` 等最小核心模型
-- 应用层编排：在分析完成后判断是否触发归档，但不把飞书写入逻辑塞进 `IdeaAnalysisService`
-- 最小测试：覆盖首次请求生成 `session_id`、澄清续传 `session_id`、完成态归档状态判定
+- [x] 扩展本地存储，不只保存最小索引，还保存可继续推理的结构化快照
+- [x] 为 completed analysis 保存结构化分析内容、澄清记录、假设与开放问题
+- [x] 为 follow-up 保存问题、局部完善结果、受影响板块与 patch 数据
+- [x] 增加 `parent_session_id`、`session_kind` 等可查询字段
+- [x] 为链式 follow-up 的读取与保存补测试
 
-### M2：本地 SQLite 索引
-
-- [x] 设计最小表结构
-- [x] 接入 `SQLite` 存储层
-- [x] 为记录创建、状态更新、查询补最小测试
-
-#### M2 最小字段集合
+#### M2 最小快照信息
 
 - `session_id`
-- `original_content`
-- `input_echo`
-- `clarification_count`
-- `archive_status`
-- `archive_url`
-- `archive_error`
-- `created_at`
-- `completed_at`
-- `archived_at`
-- `updated_at`
-
-说明：
-
-- 首版 `SQLite` 目标是“最小索引 + 归档状态追踪”，不是完整长期记忆仓库
-- 首版建议数据库文件路径固定为 `data/ideaos_agent.db`
-
-### M3：飞书归档适配
-
-- [x] 封装飞书 CLI / 接口调用边界
-- [x] 固定文档模板与标题策略
-- [x] 明确失败重试与回退行为
-
-#### M3 当前实现说明
-
-- 已新增 `SessionArchiver` 归档适配契约，并在 `infrastructure/archive/` 下分别实现真实飞书归档器与本地 `fake` 归档器。
-- 真实飞书归档当前通过 `lark-cli docs +create --as user --json --content -` 创建文档，并解析返回结果中的 `data.document.url` 作为 `archive_url`。
-- 当前默认创建位置为飞书根目录；后续如需切换归档位置，可通过 `IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN` 指向目标父目录或知识库节点。
-- 当前标题规则已冻结为 `IdeaOS Archive | {archive_title}`：
-  - `archive_title` 优先使用 LLM 产出的语义标题
-  - 若语义标题不可用，则依次回退到 `summary`、`input_echo`
-- 当前飞书正文模板已固定为“单次完整会话归档”，包含：
-  - Session 信息
-  - Original Idea
-  - Input Echo
-  - Clarification Record
-  - System Assumptions
-  - Analysis 九字段
-  - Open Questions
-- 当前失败策略已冻结为：
-  - 首版不做后台自动重试
-  - 飞书归档失败时写回 `failed / archive_error / archived_at`
-  - 主分析结果照常返回，不回滚本次分析输出
-
-#### M3 飞书模板最小输入
-
-- `session_id`
-- `created_at`
+- `parent_session_id`
+- `session_kind`：建议至少区分 `analysis / follow_up_refinement / full_plan_composed`
 - `original_content`
 - `input_echo`
 - `clarifications`
 - `assumptions`
-- `analysis` 九个字段
-- `open_questions`
-- `archive_generated_at`
+- `analysis_snapshot` 或 `refinement_snapshot`
+- `archive_status`
+- `archive_url`
+- `created_at / completed_at / archived_at / updated_at`
 
-说明：
+### M3：follow-up 应用层编排
 
-- 飞书文档承载“面向人阅读的完整会话归档”
-- `archive_status` 不是飞书正文必需字段，而是本地系统状态
-- `archive_url` 是飞书归档成功后返回给系统的结果，不是飞书输入
+- [x] 新增 follow-up service，读取父 session 快照并组织 follow-up prompt
+- [x] 保持最多一次澄清的交互限制
+- [x] 完成“局部完善结果”生成与校验
+- [x] 完成“确认修改并生成新版完整方案”的程序合成逻辑
+- [x] 保证原 session 只读，新结果写入新 session
 
-### M4：前端与接口反馈
+#### M3 合成逻辑约束
 
-- [x] API 返回归档状态与文档链接
-- [x] 页面展示归档成功 / 失败结果
-- [ ] 评估是否需要最小“查看最近归档”入口（保留为后续版本 open question）
+- 仅覆盖 `proposed_section_updates` 中声明的板块
+- 未声明修改的板块，原样继承父方案
+- 若用户修改的是明显跨板块的核心前提，首版先允许继续 follow-up 打磨，不在 `v0.2.5` 强行做全量重生
 
-#### M4 当前实现说明
+### M4：follow-up 归档与前端最小体验
 
-- 前端结果区已新增 `SESSION ARCHIVE / 归档状态` 面板，最小展示：
-  - `session_id`
-  - `archive_status`
-  - `archive_title`
-  - `archive_url`（仅成功时展示飞书跳转链接）
-- 当前四态展示规则已接入页面：
-  - `not_triggered`：提示当前仍处于澄清态，尚未触发归档
-  - `pending`：提示分析已完成，归档任务已开始
-  - `succeeded`：提示已成功归档，并提供飞书文档打开入口
-  - `failed`：提示飞书归档失败，但不影响本次分析结果阅读
-- 当前首版仍不提供历史记录列表，只展示当前会话的归档状态与链接
+- [x] 新增 follow-up 归档模板
+- [x] 在归档正文中写入 `parent_session_id`、父文档链接、本次追问与修改摘要
+- [x] 前端在当前结果页提供“继续完善方案”入口
+- [x] 前端支持“确认修改并生成新版完整方案”
+- [x] 前端支持基于**当前结果**继续下一次 follow-up
 
-#### M4 前端联动约定
+#### M4 首版体验边界
 
-- 第一次请求返回澄清态时，前端必须保存 `session_id`
-- 第二次“补充并重新分析”请求必须携带相同 `session_id`
-- 用户点击 `RESET` 后，前端应清空本地保存的 `session_id`
-- 首版优先展示 `archive_status` 与 `archive_url`，暂不强推完整历史列表
+- 首版可以连续 follow-up，但入口只围绕“当前正在查看的结果”
+- 用户离开当前结果页后，不强求在 `v0.2.5` 中提供完整历史选择器
+- 历史记录列表、筛选与树状导航统一放到 `v0.3`
 
 ------
 
 ## 当前执行顺序
 
-为避免 v0.2 过早发散，后续实现统一按以下顺序推进：
+为避免 `v0.2.5` 直接滑向“自由聊天产品”，实现顺序固定如下：
 
-1. `M1`：先冻结契约与分层边界，再开始代码改动
-2. `M2`：先落本地 `SQLite` 最小索引，确保会话状态可追踪
-3. `M3`：在不阻塞主分析链路的前提下接入飞书归档
-4. `M4`：最后补前端展示与接口回传体验
+1. `M1`：先冻结 follow-up 契约与动作边界
+2. `M2`：先补本地结构化快照，再谈连续 follow-up
+3. `M3`：在父 session 只读前提下实现局部完善与完整方案合成
+4. `M4`：最后补前端入口与 follow-up 归档展示
 
 每一步都必须满足以下约束：
 
-- 不把 `session_id / archive_status / archive_url` 注入 LLM prompt
-- 不把飞书调用逻辑直接塞进 `IdeaAnalysisService`
-- 不把历史记录自动注入下一轮分析
-- 新增契约必须补类型、测试与文档
-- 尽量最小改动，不顺手重构无关文件
+- 不自动注入无关历史记录
+- 不把 follow-up 做成开放式聊天
+- 不覆盖原 session 或原飞书归档
+- 不把飞书文档当作唯一系统状态来源
+- 新增契约、存储与交互必须补类型、测试与文档
 
 ------
 
 ## 打开问题
 
-- [x] `SQLite` 文件位置首版建议固定为 `data/ideaos_agent.db`
-- [x] 飞书文档标题格式最终采用哪种规则
-- [x] 首版不做后台自动重试，先记录失败状态与错误信息
-- [ ] 是否在 v0.2 首版就展示历史记录列表
+- [ ] `v0.3` 是否引入 `root_session_id` 或 `thread_id` 作为历史线程聚合键
+- [ ] 哪些跨板块修改应在 UI 层显式提示“建议继续 follow-up 打磨，而不是立即合成完整方案”
+- [ ] 历史记录列表、筛选与从任意历史节点继续 follow-up 的交互细节，统一转入 `v0.3`
 
 ------
 
 ## 退出标准
 
-满足以下条件时，可认为 v0.2 的最小目标达成：
+满足以下条件时，可认为 `v0.2.5` 的最小目标达成：
 
-- [x] 同一会话可成功生成飞书文档并返回链接
-- [x] 完成一次正式分析后，系统创建本地会话索引
-- [x] 飞书归档失败时，主分析结果仍正常返回
-- [x] 相关环境变量、文档与测试全部补齐
+- [x] 用户可基于某个已归档 session 发起 follow-up
+- [x] 系统可返回局部完善结果，并保留逻辑父子关系
+- [x] 用户可显式确认修改并得到新版完整方案
+- [x] follow-up 可继续归档为新文档，且不覆盖原归档
+- [x] 用户可从当前结果继续发起下一次 follow-up
+- [x] 历史记录列表仍然保持在 `v0.3` 范围内

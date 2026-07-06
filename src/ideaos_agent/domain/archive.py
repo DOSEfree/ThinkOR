@@ -1,4 +1,4 @@
-"""Archive-related domain models for v0.2 session tracking."""
+"""Archive-related domain models for session tracking and Feishu export."""
 
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -6,9 +6,12 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ideaos_agent.domain.analysis import IdeaAnalysis, RefinementResult
+from ideaos_agent.domain.session import SessionClarificationRecord, SessionKind
+
 
 class ArchiveStatus(StrEnum):
-    """Archive lifecycle states for a single idea analysis session."""
+    """Archive lifecycle states for a single session."""
 
     NOT_TRIGGERED = "not_triggered"
     PENDING = "pending"
@@ -17,178 +20,217 @@ class ArchiveStatus(StrEnum):
 
 
 class SessionRecord(BaseModel):
-    """Minimal local session index model for archive tracking."""
+    """Minimal local session index model for status tracking."""
 
-    session_id: str = Field(min_length=1, description="完整会话的稳定 ID。")
-    original_content: str = Field(min_length=1, description="用户首次提交的原始想法。")
-    input_echo: str = Field(min_length=1, description="LLM 对原始想法的忠实复述。")
+    session_id: str = Field(min_length=1, description="Stable session ID.")
+    parent_session_id: str | None = Field(
+        default=None,
+        description="Immediate parent session, if any.",
+    )
+    session_kind: SessionKind = Field(
+        default=SessionKind.ANALYSIS,
+        description="Kind of session represented by the index record.",
+    )
+    original_content: str = Field(min_length=1, description="Raw/root idea content.")
+    input_echo: str = Field(min_length=1, description="Faithful input echo.")
     clarification_count: int = Field(
         ge=0,
-        description="当前请求中携带的澄清回答数量，用于最小索引与状态追踪。",
+        description="Clarification count carried in the current request.",
     )
-    archive_status: ArchiveStatus = Field(description="当前会话的归档状态。")
+    archive_status: ArchiveStatus = Field(description="Archive state for the session.")
     archive_url: str | None = Field(
         default=None,
-        description="飞书归档链接。仅归档成功后应有值。",
+        description="Archive URL when the archive succeeds.",
     )
     archive_error: str | None = Field(
         default=None,
-        description="归档失败时记录的最小错误信息。",
+        description="Minimal archive error detail when archiving fails.",
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        description="会话记录创建时间。",
+        description="Session record creation time.",
     )
     completed_at: datetime | None = Field(
         default=None,
-        description="会话进入最终完成态的时间；若仍为澄清态则为空。",
+        description="Time when the session reached a completed result.",
     )
     archived_at: datetime | None = Field(
         default=None,
-        description="归档动作完成时间；成功或失败后均可记录。",
+        description="Time when the archive attempt finished.",
     )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        description="会话记录最后更新时间。",
+        description="Last update time.",
     )
 
-    @field_validator("session_id", "original_content", "input_echo", "archive_error")
+    @field_validator(
+        "session_id",
+        "parent_session_id",
+        "original_content",
+        "input_echo",
+        "archive_error",
+        "archive_url",
+    )
     @classmethod
-    def validate_not_blank_when_present(cls, value: str | None) -> str | None:
-        """Reject blank-only strings while allowing null optional fields."""
+    def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only optional text values."""
 
         if value is None:
             return None
         normalized = value.strip()
         if not normalized:
-            raise ValueError("会话记录字段不能为空白字符串。")
-        return normalized
-
-    @field_validator("archive_url")
-    @classmethod
-    def validate_archive_url_not_blank(cls, value: str | None) -> str | None:
-        """Reject blank-only archive URLs while allowing null."""
-
-        if value is None:
-            return None
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("archive_url 不能为空白字符串。")
+            raise ValueError("Session record text fields must not be blank.")
         return normalized
 
     @model_validator(mode="after")
     def validate_archive_consistency(self) -> "SessionRecord":
         """Keep persisted archive state internally consistent."""
 
+        if self.session_kind == SessionKind.ANALYSIS and self.parent_session_id is not None:
+            raise ValueError("Analysis session records must not include parent_session_id.")
+
+        if self.session_kind != SessionKind.ANALYSIS and self.parent_session_id is None:
+            raise ValueError("Follow-up/composed session records require parent_session_id.")
+
         if self.archive_status == ArchiveStatus.NOT_TRIGGERED:
             if self.completed_at is not None:
-                raise ValueError("未触发归档的会话不应包含 completed_at。")
+                raise ValueError("NOT_TRIGGERED sessions must not include completed_at.")
             if self.archived_at is not None:
-                raise ValueError("未触发归档的会话不应包含 archived_at。")
+                raise ValueError("NOT_TRIGGERED sessions must not include archived_at.")
             if self.archive_url is not None:
-                raise ValueError("未触发归档的会话不应包含 archive_url。")
+                raise ValueError("NOT_TRIGGERED sessions must not include archive_url.")
 
         if self.archive_status == ArchiveStatus.PENDING:
             if self.completed_at is None:
-                raise ValueError("待归档会话必须记录 completed_at。")
+                raise ValueError("PENDING sessions must include completed_at.")
             if self.archived_at is not None:
-                raise ValueError("待归档会话不应提前写入 archived_at。")
+                raise ValueError("PENDING sessions must not include archived_at.")
             if self.archive_url is not None:
-                raise ValueError("待归档会话不应包含 archive_url。")
+                raise ValueError("PENDING sessions must not include archive_url.")
 
         if self.archive_status == ArchiveStatus.SUCCEEDED:
             if self.completed_at is None:
-                raise ValueError("归档成功会话必须记录 completed_at。")
+                raise ValueError("SUCCEEDED sessions must include completed_at.")
             if self.archived_at is None:
-                raise ValueError("归档成功会话必须记录 archived_at。")
+                raise ValueError("SUCCEEDED sessions must include archived_at.")
             if self.archive_url is None:
-                raise ValueError("归档成功会话必须包含 archive_url。")
+                raise ValueError("SUCCEEDED sessions must include archive_url.")
 
         if self.archive_status == ArchiveStatus.FAILED:
             if self.completed_at is None:
-                raise ValueError("归档失败会话必须记录 completed_at。")
+                raise ValueError("FAILED sessions must include completed_at.")
             if self.archived_at is None:
-                raise ValueError("归档失败会话必须记录 archived_at。")
+                raise ValueError("FAILED sessions must include archived_at.")
             if self.archive_url is not None:
-                raise ValueError("归档失败会话不应包含 archive_url。")
+                raise ValueError("FAILED sessions must not include archive_url.")
 
         return self
 
 
-class SessionClarificationRecord(BaseModel):
-    """Serializable clarification item used in archive payloads."""
-
-    question: str = Field(min_length=1, description="澄清问题。")
-    answer: str = Field(min_length=1, description="用户回答。")
-
-    @field_validator("question", "answer")
-    @classmethod
-    def validate_not_blank(cls, value: str) -> str:
-        """Reject blank-only clarification content."""
-
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("归档澄清内容不能为空白。")
-        return normalized
-
-
 class SessionArchivePayload(BaseModel):
-    """Complete archive payload passed from application layer to an archiver."""
+    """Complete archive payload passed to an archive adapter."""
 
-    session_id: str = Field(min_length=1, description="完整会话 ID。")
-    archive_title: str = Field(min_length=1, description="归档文档标题中的语义标题部分。")
-    original_content: str = Field(min_length=1, description="用户原始想法。")
-    input_echo: str = Field(min_length=1, description="LLM 对原始想法的忠实复述。")
+    session_id: str = Field(min_length=1, description="Session ID.")
+    parent_session_id: str | None = Field(
+        default=None,
+        description="Immediate parent session ID, if any.",
+    )
+    parent_archive_url: str | None = Field(
+        default=None,
+        description="Parent archive URL, if available.",
+    )
+    session_kind: SessionKind = Field(
+        default=SessionKind.ANALYSIS,
+        description="Session kind for the archive document.",
+    )
+    archive_title: str = Field(min_length=1, description="Semantic title portion.")
+    original_content: str = Field(min_length=1, description="Root/original idea.")
+    input_echo: str = Field(min_length=1, description="Faithful current input echo.")
     clarifications: list[SessionClarificationRecord] = Field(
         default_factory=list,
-        description="本次会话携带的澄清记录。",
+        description="Clarification records for the current session.",
     )
-    assumptions: list[str] = Field(
-        default_factory=list,
-        description="系统假设列表。",
+    assumptions: list[str] = Field(default_factory=list, description="System assumptions.")
+    open_questions: list[str] = Field(default_factory=list, description="Open questions.")
+    follow_up_question: str | None = Field(
+        default=None,
+        description="Follow-up question, when this is a follow-up session.",
     )
-    open_questions: list[str] = Field(
-        default_factory=list,
-        description="后续可继续打磨的问题。",
+    analysis: IdeaAnalysis | None = Field(
+        default=None,
+        description="Full analysis when available.",
     )
-    summary: str = Field(description="分析摘要。")
-    feasibility: str = Field(description="可行性分析。")
-    market: str = Field(description="市场分析。")
-    knowledge_gaps: list[str] = Field(default_factory=list, description="知识缺口列表。")
-    resource_gaps: list[str] = Field(default_factory=list, description="资源缺口列表。")
-    team_requirements: list[str] = Field(default_factory=list, description="团队需求列表。")
-    similar_projects: list[str] = Field(default_factory=list, description="相似项目列表。")
-    mvp_roadmap: list[str] = Field(default_factory=list, description="MVP 路线图。")
-    long_term_roadmap: list[str] = Field(default_factory=list, description="长期路线图。")
-    created_at: datetime = Field(description="会话首次创建时间。")
-    completed_at: datetime = Field(description="会话完成分析时间。")
+    refinement_result: RefinementResult | None = Field(
+        default=None,
+        description="Refinement result when available.",
+    )
+    created_at: datetime = Field(description="Session creation time.")
+    completed_at: datetime = Field(description="Session completion time.")
 
     @field_validator(
         "session_id",
+        "parent_session_id",
+        "parent_archive_url",
         "archive_title",
         "original_content",
         "input_echo",
-        "summary",
-        "feasibility",
-        "market",
+        "follow_up_question",
     )
     @classmethod
-    def validate_required_text_not_blank(cls, value: str) -> str:
-        """Reject blank-only required archive text fields."""
+    def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only optional text values."""
 
+        if value is None:
+            return None
         normalized = value.strip()
         if not normalized:
-            raise ValueError("归档载荷中的必填文本字段不能为空白。")
+            raise ValueError("Archive payload text fields must not be blank.")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "SessionArchivePayload":
+        """Keep archive payload shape aligned with the session kind."""
+
+        if self.session_kind == SessionKind.ANALYSIS:
+            if self.parent_session_id is not None:
+                raise ValueError("Analysis archives must not include parent_session_id.")
+            if self.follow_up_question is not None:
+                raise ValueError("Analysis archives must not include follow_up_question.")
+            if self.analysis is None:
+                raise ValueError("Analysis archives must include analysis.")
+            if self.refinement_result is not None:
+                raise ValueError("Analysis archives must not include refinement_result.")
+
+        if self.session_kind == SessionKind.FOLLOW_UP_REFINEMENT:
+            if self.parent_session_id is None:
+                raise ValueError("Refinement archives require parent_session_id.")
+            if self.follow_up_question is None:
+                raise ValueError("Refinement archives require follow_up_question.")
+            if self.analysis is not None:
+                raise ValueError("Refinement archives must not include analysis.")
+            if self.refinement_result is None:
+                raise ValueError("Refinement archives require refinement_result.")
+
+        if self.session_kind == SessionKind.FULL_PLAN_COMPOSED:
+            if self.parent_session_id is None:
+                raise ValueError("Composed archives require parent_session_id.")
+            if self.follow_up_question is None:
+                raise ValueError("Composed archives require follow_up_question.")
+            if self.analysis is None:
+                raise ValueError("Composed archives require analysis.")
+            if self.refinement_result is None:
+                raise ValueError("Composed archives require refinement_result.")
+
+        return self
 
 
 class ArchiveResult(BaseModel):
     """Result returned by an archive adapter after one archive attempt."""
 
-    archive_status: ArchiveStatus = Field(description="归档尝试后的最终状态。")
-    archive_url: str | None = Field(default=None, description="归档成功后的飞书文档链接。")
-    archive_error: str | None = Field(default=None, description="归档失败时记录的最小错误信息。")
-    archived_at: datetime = Field(description="本次归档尝试结束时间。")
+    archive_status: ArchiveStatus = Field(description="Final archive status.")
+    archive_url: str | None = Field(default=None, description="Archive URL on success.")
+    archive_error: str | None = Field(default=None, description="Archive error on failure.")
+    archived_at: datetime = Field(description="When the archive attempt finished.")
 
     @field_validator("archive_url", "archive_error")
     @classmethod
@@ -199,7 +241,7 @@ class ArchiveResult(BaseModel):
             return None
         normalized = value.strip()
         if not normalized:
-            raise ValueError("归档结果文本字段不能为空白字符串。")
+            raise ValueError("Archive result text fields must not be blank.")
         return normalized
 
     @model_validator(mode="after")
@@ -208,14 +250,14 @@ class ArchiveResult(BaseModel):
 
         if self.archive_status == ArchiveStatus.SUCCEEDED:
             if self.archive_url is None:
-                raise ValueError("归档成功结果必须包含 archive_url。")
+                raise ValueError("archive_url is required for SUCCEEDED archive results.")
             if self.archive_error is not None:
-                raise ValueError("归档成功结果不应包含 archive_error。")
+                raise ValueError("archive_error is not allowed for SUCCEEDED archive results.")
         elif self.archive_status == ArchiveStatus.FAILED:
             if self.archive_url is not None:
-                raise ValueError("归档失败结果不应包含 archive_url。")
+                raise ValueError("archive_url is not allowed for FAILED archive results.")
         else:
-            raise ValueError("ArchiveResult 仅接受 succeeded 或 failed 两种状态。")
+            raise ValueError("ArchiveResult only supports succeeded or failed states.")
 
         return self
 
@@ -224,14 +266,14 @@ class SessionArchiveStore(Protocol):
     """Storage contract for the minimal session archive index."""
 
     def save_session_record(self, record: SessionRecord) -> SessionRecord:
-        """Create or update the minimal session archive index record."""
+        """Create or update the minimal session index record."""
 
     def get_session_record(self, session_id: str) -> SessionRecord | None:
-        """Fetch a session archive record by its stable session ID."""
+        """Fetch one session index record by session ID."""
 
 
 class SessionArchiver(Protocol):
-    """Archive adapter contract for external session archive targets."""
+    """Archive adapter contract for external archive targets."""
 
     def archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
         """Archive one completed session and return the final attempt result."""

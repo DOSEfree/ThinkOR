@@ -50,6 +50,7 @@ class HttpLlmClient(LlmClient):
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.2,
+            "response_format": {"type": "json_object"},
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",

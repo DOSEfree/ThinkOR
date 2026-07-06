@@ -2,9 +2,7 @@ import json
 from datetime import UTC, datetime
 
 from ideaos_agent.application.idea_analysis_service import IdeaAnalysisService
-from ideaos_agent.application.idea_analysis_session_service import (
-    IdeaAnalysisSessionService,
-)
+from ideaos_agent.application.idea_analysis_session_service import IdeaAnalysisSessionService
 from ideaos_agent.config import AppSettings
 from ideaos_agent.domain.archive import (
     ArchiveResult,
@@ -12,6 +10,7 @@ from ideaos_agent.domain.archive import (
     SessionArchivePayload,
     SessionRecord,
 )
+from ideaos_agent.domain.session import SessionSnapshot
 from ideaos_agent.infrastructure.llm.client import LlmClient
 from ideaos_agent.models import IdeaInput
 from ideaos_agent.prompts.idea_analysis import IdeaAnalysisPromptBuilder
@@ -30,7 +29,7 @@ class MockLlmClient(LlmClient):
 
 
 class InMemorySessionArchiveStore:
-    """Simple in-memory store used for session-service unit tests."""
+    """Simple in-memory index store used for session-service unit tests."""
 
     def __init__(self) -> None:
         self.records: dict[str, SessionRecord] = {}
@@ -45,6 +44,24 @@ class InMemorySessionArchiveStore:
 
     def get_session_record(self, session_id: str) -> SessionRecord | None:
         return self.records.get(session_id)
+
+
+class InMemorySessionSnapshotStore:
+    """Simple in-memory snapshot store used for session-service unit tests."""
+
+    def __init__(self) -> None:
+        self.snapshots: dict[str, SessionSnapshot] = {}
+
+    def save_session_snapshot(self, snapshot: SessionSnapshot) -> SessionSnapshot:
+        existing = self.snapshots.get(snapshot.session_id)
+        persisted = snapshot
+        if existing is not None:
+            persisted = snapshot.model_copy(update={"created_at": existing.created_at})
+        self.snapshots[persisted.session_id] = persisted
+        return persisted
+
+    def get_session_snapshot(self, session_id: str) -> SessionSnapshot | None:
+        return self.snapshots.get(session_id)
 
 
 class FakeSessionArchiver:
@@ -76,7 +93,12 @@ def build_session_service(
     responses: list[dict[str, object]],
     *,
     should_fail_archive: bool = False,
-) -> tuple[IdeaAnalysisSessionService, InMemorySessionArchiveStore, FakeSessionArchiver]:
+) -> tuple[
+    IdeaAnalysisSessionService,
+    InMemorySessionArchiveStore,
+    InMemorySessionSnapshotStore,
+    FakeSessionArchiver,
+]:
     analysis_service = IdeaAnalysisService(
         settings=AppSettings(
             llm_api_key="fake-key",
@@ -87,20 +109,23 @@ def build_session_service(
         prompt_builder=IdeaAnalysisPromptBuilder(),
     )
     archive_store = InMemorySessionArchiveStore()
+    snapshot_store = InMemorySessionSnapshotStore()
     archiver = FakeSessionArchiver(should_fail=should_fail_archive)
     return (
         IdeaAnalysisSessionService(
             analysis_service=analysis_service,
             session_archive_store=archive_store,
+            session_snapshot_store=snapshot_store,
             session_archiver=archiver,
         ),
         archive_store,
+        snapshot_store,
         archiver,
     )
 
 
 def test_session_service_generates_session_id_for_first_request() -> None:
-    service, archive_store, archiver = build_session_service(
+    service, archive_store, snapshot_store, archiver = build_session_service(
         [
             {
                 "archive_title": "独立开发者产品验证工具",
@@ -116,9 +141,7 @@ def test_session_service_generates_session_id_for_first_request() -> None:
         ]
     )
 
-    result = service.analyze(
-        IdeaInput(content="我想做一个帮助独立开发者验证产品想法的工具。")
-    )
+    result = service.analyze(IdeaInput(content="我想做一个帮助独立开发者验证产品想法的工具。"))
 
     assert result.session_id.startswith("sess_")
     assert result.archive_status == ArchiveStatus.NOT_TRIGGERED
@@ -127,11 +150,12 @@ def test_session_service_generates_session_id_for_first_request() -> None:
     assert persisted_record is not None
     assert persisted_record.archive_status == ArchiveStatus.NOT_TRIGGERED
     assert persisted_record.completed_at is None
+    assert snapshot_store.get_session_snapshot(result.session_id) is None
     assert archiver.calls == []
 
 
 def test_session_service_reuses_existing_session_id_for_completed_analysis() -> None:
-    service, archive_store, archiver = build_session_service(
+    service, archive_store, snapshot_store, archiver = build_session_service(
         [
             {
                 "archive_title": "独立开发者产品验证工具",
@@ -172,12 +196,15 @@ def test_session_service_reuses_existing_session_id_for_completed_analysis() -> 
     assert persisted_record.completed_at.tzinfo == UTC
     assert persisted_record.completed_at <= datetime.now(UTC)
     assert persisted_record.archive_url == "https://feishu.example.com/docx/sess_existing"
+    persisted_snapshot = snapshot_store.get_session_snapshot("sess_existing")
+    assert persisted_snapshot is not None
+    assert persisted_snapshot.analysis is not None
     assert len(archiver.calls) == 1
     assert archiver.calls[0].archive_title == "独立开发者产品验证工具"
 
 
 def test_session_service_marks_archive_failed_without_blocking_response() -> None:
-    service, archive_store, _archiver = build_session_service(
+    service, archive_store, snapshot_store, _archiver = build_session_service(
         [
             {
                 "archive_title": "独立开发者产品验证工具",
@@ -217,3 +244,6 @@ def test_session_service_marks_archive_failed_without_blocking_response() -> Non
     assert persisted_record.archive_status == ArchiveStatus.FAILED
     assert persisted_record.archive_error == "飞书归档失败。"
     assert persisted_record.archived_at is not None
+    persisted_snapshot = snapshot_store.get_session_snapshot("sess_failed")
+    assert persisted_snapshot is not None
+    assert persisted_snapshot.archived_at is not None

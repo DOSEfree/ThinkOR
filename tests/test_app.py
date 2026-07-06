@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from ideaos_agent.domain.archive import ArchiveStatus
@@ -34,6 +35,16 @@ def test_app_page_renders_html_interface() -> None:
     assert "/static/swiss.css" in response.text
     assert "/static/app.js" in response.text
     assert "归档状态" in response.text
+    assert "follow-up 局部完善结果，以及当前会话的归档状态。" in response.text
+
+
+def test_app_styles_allow_result_placeholder_copy_to_stay_on_one_line_more_easily() -> None:
+    client = TestClient(app)
+
+    response = client.get("/static/swiss.css")
+
+    assert response.status_code == 200
+    assert "max-width: 72rem;" in response.text
 
 
 def test_app_serves_archive_aware_frontend_script() -> None:
@@ -46,9 +57,19 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert "renderArchivePanel" in response.text
     assert "SESSION ARCHIVE / 归档状态" in response.text
     assert "OPEN FEISHU DOC" in response.text
+    assert "if (!resultContent.innerHTML.trim())" in response.text
+    assert "SUMMARY / 摘要" in response.text
+    assert "NEXT ACTIONS / 后续动作" in response.text
+    assert "function formatSectionKeyLabel(sectionKey)" in response.text
+    assert "SECTION_DISPLAY_LABELS" in response.text
+    assert "data-follow-up-composer" in response.text
+    assert "let isSubmitting = false" in response.text
+    assert "function setActionButtonsDisabled(isDisabled)" in response.text
 
 
-def test_idea_analysis_endpoint_returns_fake_response(monkeypatch) -> None:
+def test_idea_analysis_endpoint_returns_fake_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
     monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
     monkeypatch.setenv("IDEAOS_MAX_INPUT_CHARS", "4000")

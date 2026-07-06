@@ -7,29 +7,38 @@ const resetButton = document.getElementById("idea-reset");
 const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
+
 let currentSessionId = null;
+let currentView = null;
+let isSubmitting = false;
+let activeLoadingButton = null;
 
 const ANALYSIS_FIELDS = [
-  ["01", "SUMMARY", "summary", "copy", "analysis-span-12"],
-  ["02", "FEASIBILITY", "feasibility", "copy", "analysis-span-12"],
-  ["03", "MARKET", "market", "copy", "analysis-span-12"],
-  ["04", "KNOWLEDGE GAPS", "knowledge_gaps", "list", "analysis-span-12"],
-  ["05", "RESOURCE GAPS", "resource_gaps", "list", "analysis-span-12"],
-  ["06", "TEAM REQUIREMENTS", "team_requirements", "list", "analysis-span-12"],
-  ["07", "SIMILAR PROJECTS", "similar_projects", "list", "analysis-span-12"],
-  ["08", "MVP ROADMAP", "mvp_roadmap", "list", "analysis-span-12"],
-  ["09", "LONG-TERM ROADMAP", "long_term_roadmap", "list", "analysis-span-12"],
+  ["01", "SUMMARY / 摘要", "summary", "copy", "analysis-span-12"],
+  ["02", "FEASIBILITY / 可行性", "feasibility", "copy", "analysis-span-12"],
+  ["03", "MARKET / 市场判断", "market", "copy", "analysis-span-12"],
+  ["04", "KNOWLEDGE GAPS / 认知缺口", "knowledge_gaps", "list", "analysis-span-12"],
+  ["05", "RESOURCE GAPS / 资源缺口", "resource_gaps", "list", "analysis-span-12"],
+  ["06", "TEAM REQUIREMENTS / 团队需求", "team_requirements", "list", "analysis-span-12"],
+  ["07", "SIMILAR PROJECTS / 相似项目", "similar_projects", "list", "analysis-span-12"],
+  ["08", "MVP ROADMAP / MVP 路线图", "mvp_roadmap", "list", "analysis-span-12"],
+  ["09", "LONG-TERM ROADMAP / 长期路线图", "long_term_roadmap", "list", "analysis-span-12"],
 ];
+
+const SECTION_DISPLAY_LABELS = Object.fromEntries(
+  ANALYSIS_FIELDS.map(([, title, key]) => [key, title]),
+);
+
 const ARCHIVE_STATUS_META = {
   not_triggered: {
     badge: "NOT TRIGGERED",
-    label: "WAITING FOR FINAL ANALYSIS",
-    note: "Archive will be created only after this session reaches a completed analysis.",
+    label: "WAITING FOR FINAL RESULT",
+    note: "Archive will be created only after this session reaches a completed result.",
   },
   pending: {
     badge: "PENDING",
     label: "ARCHIVE IN PROGRESS",
-    note: "The analysis is ready and the archive job has been triggered for this session.",
+    note: "The result is ready and the archive job has been triggered for this session.",
   },
   succeeded: {
     badge: "SUCCEEDED",
@@ -39,12 +48,15 @@ const ARCHIVE_STATUS_META = {
   failed: {
     badge: "FAILED",
     label: "ARCHIVE FAILED",
-    note: "The analysis is ready, but the Feishu archive step failed. The analysis result below is still valid.",
+    note: "The result is ready, but the Feishu archive step failed. The result below is still valid.",
   },
 };
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isSubmitting) {
+    return;
+  }
   const content = textarea.value.trim();
   if (!content) {
     renderError("请输入一段原始想法后再提交。");
@@ -52,7 +64,12 @@ form.addEventListener("submit", async (event) => {
   }
 
   currentSessionId = null;
-  await submitIdea({ content, clarifications: [], session_id: null }, "分析 / ANALYZE");
+  currentView = null;
+  await submitIdea(
+    { content, clarifications: [], session_id: null },
+    "分析 / ANALYZE",
+    submitButton,
+  );
 });
 
 resetButton.addEventListener("click", () => {
@@ -66,6 +83,9 @@ resultContent.addEventListener("click", async (event) => {
   if (!(target instanceof HTMLElement)) {
     return;
   }
+  if (isSubmitting) {
+    return;
+  }
 
   if (target.matches("[data-action='reset']")) {
     form.reset();
@@ -74,11 +94,33 @@ resultContent.addEventListener("click", async (event) => {
     return;
   }
 
-  if (!target.matches("[data-action='rerun']")) {
+  if (target.matches("[data-action='rerun-analysis']")) {
+    await handleClarificationRerun(target);
     return;
   }
 
-  const content = target.getAttribute("data-content") || textarea.value.trim();
+  if (target.matches("[data-action='start-follow-up']")) {
+    renderFollowUpComposer();
+    return;
+  }
+
+  if (target.matches("[data-action='submit-follow-up']")) {
+    await handleFollowUpRefine(target);
+    return;
+  }
+
+  if (target.matches("[data-action='rerun-follow-up']")) {
+    await handleFollowUpClarificationRerun(target);
+    return;
+  }
+
+  if (target.matches("[data-action='compose-full-plan']")) {
+    await handleComposeFullPlan(target);
+  }
+});
+
+async function handleClarificationRerun(triggerButton) {
+  const content = currentView && currentView.rawContent ? currentView.rawContent : textarea.value.trim();
   const questionCards = Array.from(resultContent.querySelectorAll("[data-question-card]"));
   const clarifications = [];
 
@@ -101,11 +143,114 @@ resultContent.addEventListener("click", async (event) => {
   await submitIdea(
     { content, clarifications, session_id: currentSessionId },
     "补充并重新分析 / RE-RUN",
+    triggerButton,
   );
-});
+}
 
-async function submitIdea(payload, loadingLabel) {
-  setLoadingState(true, loadingLabel);
+async function handleFollowUpRefine(triggerButton) {
+  if (!currentView || !currentView.sessionId) {
+    renderError("当前没有可继续完善的结果。");
+    return;
+  }
+
+  const input = resultContent.querySelector("[data-follow-up-input]");
+  const question = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+  if (!question) {
+    renderError("请输入你想继续完善的问题。");
+    return;
+  }
+
+  currentView.followUpQuestion = question;
+  await submitFollowUpRefine(
+    {
+      session_id: null,
+      parent_session_id: currentView.sessionId,
+      question,
+      clarifications: [],
+    },
+    "继续完善 / REFINE",
+    triggerButton,
+  );
+}
+
+async function handleFollowUpClarificationRerun(triggerButton) {
+  if (!currentView || !currentView.parentSessionId || !currentView.followUpQuestion) {
+    renderError("当前没有可继续补充的 follow-up 请求。");
+    return;
+  }
+
+  const questionCards = Array.from(resultContent.querySelectorAll("[data-question-card]"));
+  const clarifications = [];
+
+  for (const card of questionCards) {
+    const question = card.getAttribute("data-question") || "";
+    const input = card.querySelector("[data-question-input]");
+    const answer = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+    if (!answer) {
+      renderError("请先回答全部 follow-up 澄清问题。");
+      return;
+    }
+    clarifications.push({ question, answer });
+  }
+
+  if (!clarifications.length) {
+    renderError("当前没有可提交的 follow-up 澄清回答。");
+    return;
+  }
+
+  await submitFollowUpRefine(
+    {
+      session_id: currentSessionId,
+      parent_session_id: currentView.parentSessionId,
+      question: currentView.followUpQuestion,
+      clarifications,
+    },
+    "补充并继续完善 / RE-RUN",
+    triggerButton,
+  );
+}
+
+async function handleComposeFullPlan(triggerButton) {
+  if (!currentView || !currentView.sessionId || currentView.kind !== "follow_up_refinement") {
+    renderError("当前没有可合成新版完整方案的 refinement 结果。");
+    return;
+  }
+
+  setLoadingState(true, "生成新版完整方案 / COMPOSE", triggerButton);
+  clearFeedback();
+
+  try {
+    const response = await fetch("/api/v1/follow-up/compose-full-plan", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ parent_session_id: currentView.sessionId }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      renderApiError(data, "生成新版完整方案失败，请稍后重试。");
+      return;
+    }
+
+    currentSessionId = typeof data.session_id === "string" ? data.session_id : null;
+    currentView = {
+      kind: "analysis",
+      sessionId: data.session_id,
+      rawContent: currentView.rawContent,
+      clarifications: [],
+    };
+    renderComposedPlanView(data);
+  } catch (error) {
+    renderError(error instanceof Error ? error.message : "网络异常，请稍后重试。");
+  } finally {
+    setLoadingState(false, "分析 / ANALYZE", triggerButton);
+  }
+}
+
+async function submitIdea(payload, loadingLabel, triggerButton) {
+  setLoadingState(true, loadingLabel, triggerButton);
   clearFeedback();
 
   try {
@@ -119,50 +264,92 @@ async function submitIdea(payload, loadingLabel) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = data && typeof data === "object" ? data.detail : null;
-      const message = detail && typeof detail === "object" && "message" in detail
-        ? String(detail.message)
-        : "请求失败，请稍后再试。";
-      renderError(message);
+      renderApiError(data, "请求失败，请稍后重试。");
       return;
     }
 
     currentSessionId = typeof data.session_id === "string" ? data.session_id : currentSessionId;
 
     if (data.needs_clarification === true) {
+      currentView = {
+        kind: "analysis_clarification",
+        sessionId: data.session_id,
+        rawContent: payload.content,
+      };
       renderClarificationView(data, payload.content);
       return;
     }
 
     if (data.needs_clarification === false) {
+      currentView = {
+        kind: "analysis",
+        sessionId: data.session_id,
+        rawContent: payload.content,
+        clarifications: payload.clarifications || [],
+      };
       renderAnalysisView(data, payload.content, payload.clarifications || []);
       return;
     }
 
-    renderError("返回结果不符合预期契约，未显示伪造内容。");
+    renderError("返回结果不符合预期契约。");
   } catch (error) {
     renderError(error instanceof Error ? error.message : "网络异常，请稍后重试。");
   } finally {
-    setLoadingState(false, "分析 / ANALYZE");
+    setLoadingState(false, "分析 / ANALYZE", triggerButton);
+  }
+}
+
+async function submitFollowUpRefine(payload, loadingLabel, triggerButton) {
+  setLoadingState(true, loadingLabel, triggerButton);
+  clearFeedback();
+
+  try {
+    const response = await fetch("/api/v1/follow-up/refine", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      renderApiError(data, "继续完善失败，请稍后重试。");
+      return;
+    }
+
+    currentSessionId = typeof data.session_id === "string" ? data.session_id : currentSessionId;
+
+    if (data.needs_clarification === true) {
+      currentView = {
+        kind: "follow_up_clarification",
+        sessionId: data.session_id,
+        parentSessionId: payload.parent_session_id,
+        rawContent: currentView && currentView.rawContent ? currentView.rawContent : textarea.value.trim(),
+        followUpQuestion: payload.question,
+      };
+      renderFollowUpClarificationView(data, payload.question);
+      return;
+    }
+
+    currentView = {
+      kind: "follow_up_refinement",
+      sessionId: data.session_id,
+      parentSessionId: payload.parent_session_id,
+      rawContent: currentView && currentView.rawContent ? currentView.rawContent : textarea.value.trim(),
+      followUpQuestion: payload.question,
+    };
+    renderRefinementView(data);
+  } catch (error) {
+    renderError(error instanceof Error ? error.message : "网络异常，请稍后重试。");
+  } finally {
+    setLoadingState(false, "分析 / ANALYZE", triggerButton);
   }
 }
 
 function renderClarificationView(payload, rawContent) {
-  const assumptions = renderListItems(payload.assumptions);
-  const questions = (payload.open_questions || [])
-    .map((question, index) => `
-      <article class="question-card" data-question-card data-question="${escapeHtml(question)}">
-        <div class="question-index">${String(index + 1).padStart(2, "0")}</div>
-        <p class="question-text">${escapeHtml(question)}</p>
-        <textarea
-          class="question-input"
-          rows="4"
-          placeholder="在这里补充你的回答"
-          data-question-input
-        ></textarea>
-      </article>
-    `)
-    .join("");
+  const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
+  const questions = renderQuestionCards(payload.open_questions || []);
 
   resultContent.innerHTML = `
     ${renderStatusBar("NEEDS CLARIFICATION")}
@@ -175,7 +362,7 @@ function renderClarificationView(payload, rawContent) {
       </div>
       <div class="questions-grid">${questions}</div>
       <div class="result-actions">
-        <button class="question-submit" type="button" data-action="rerun" data-content="${escapeHtml(rawContent)}">
+        <button class="question-submit" type="button" data-action="rerun-analysis" data-content="${escapeHtml(rawContent)}">
           补充并重新分析 / RE-RUN
         </button>
         <button class="secondary-button" type="button" data-action="reset">重新开始 / RESET</button>
@@ -186,57 +373,10 @@ function renderClarificationView(payload, rawContent) {
 }
 
 function renderAnalysisView(payload, rawContent, clarifications) {
-  const assumptions = renderListItems(payload.assumptions);
-  const analysisGrid = ANALYSIS_FIELDS
-    .map(([index, title, key, kind, spanClass]) => {
-      const value = payload.analysis ? payload.analysis[key] : null;
-      const content = kind === "list" ? renderArrayBlock(value) : renderCopyBlock(value);
-      return `
-        <section class="analysis-section ${spanClass}">
-          <div class="analysis-index">${index}</div>
-          <h3 class="analysis-title">${title}</h3>
-          ${content}
-        </section>
-      `;
-    })
-    .join("");
-
-  const clarificationRecord = Array.isArray(clarifications) && clarifications.length
-    ? `
-      <section class="clarification-record">
-        <div class="assumptions-label">CLARIFICATION RECORD / 已补充信息</div>
-        <div class="clarification-grid">
-          ${clarifications
-            .map((item, index) => `
-              <article class="clarification-item">
-                <div class="question-index">${String(index + 1).padStart(2, "0")}</div>
-                <p class="clarification-question">${escapeHtml(item.question)}</p>
-                <div class="clarification-answer">${escapeHtml(item.answer)}</div>
-              </article>
-            `)
-            .join("")}
-        </div>
-      </section>
-    `
-    : "";
-
-  const followup = Array.isArray(payload.open_questions) && payload.open_questions.length
-    ? `
-      <section class="followup-block">
-        <div class="assumptions-label">CONTINUE SHARPENING / 可继续打磨的问题</div>
-        <div class="followup-grid">
-          ${payload.open_questions
-            .map((question, index) => `
-              <div class="followup-item">
-                <div class="followup-index">${String(index + 1).padStart(2, "0")}</div>
-                <div class="followup-copy">${escapeHtml(question)}</div>
-              </div>
-            `)
-            .join("")}
-        </div>
-      </section>
-    `
-    : "";
+  const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
+  const analysisGrid = renderAnalysisGrid(payload.analysis);
+  const clarificationRecord = renderClarificationRecord(clarifications);
+  const followup = renderOpenQuestionSuggestions(payload.open_questions || []);
 
   resultContent.innerHTML = `
     ${renderStatusBar("ANALYSIS READY")}
@@ -248,8 +388,167 @@ function renderAnalysisView(payload, rawContent, clarifications) {
       <div class="analysis-grid">${analysisGrid}</div>
     </section>
     ${followup}
+    ${renderFollowUpEntry()}
     <div class="result-actions">
-      <button class="secondary-button" type="button" data-action="reset" data-content="${escapeHtml(rawContent)}">
+      <button class="secondary-button" type="button" data-action="reset">
+        重新开始 / RESET
+      </button>
+    </div>
+  `;
+  showContent();
+}
+
+function renderFollowUpComposer() {
+  if (!currentView || currentView.kind !== "analysis") {
+    return;
+  }
+  const existingComposer = resultContent.querySelector("[data-follow-up-composer]");
+  if (existingComposer instanceof HTMLElement) {
+    const existingInput = existingComposer.querySelector("[data-follow-up-input]");
+    if (existingInput instanceof HTMLTextAreaElement) {
+      existingInput.focus();
+    }
+    return;
+  }
+
+  const composer = `
+    <section class="followup-block" data-follow-up-composer>
+      <div class="assumptions-label">FOLLOW-UP / 继续完善方案</div>
+      <p class="analysis-copy">
+        基于当前这版完整分析，输入你想继续追问、收窄或修改的方向。系统会先返回局部完善结果，
+        你再决定是否确认修改并生成新版完整方案。
+      </p>
+      <textarea
+        class="question-input"
+        rows="5"
+        placeholder="例如：我想把目标用户进一步收窄到没有产品背景的独立开发者。"
+        data-follow-up-input
+      ></textarea>
+      <div class="result-actions">
+        <button class="question-submit" type="button" data-action="submit-follow-up">
+          继续完善 / REFINE
+        </button>
+      </div>
+    </section>
+  `;
+
+  resultContent.insertAdjacentHTML("beforeend", composer);
+}
+
+function renderFollowUpClarificationView(payload, followUpQuestion) {
+  const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
+  const questions = renderQuestionCards(payload.open_questions || []);
+
+  resultContent.innerHTML = `
+    ${renderStatusBar("FOLLOW-UP NEEDS CLARIFICATION")}
+    ${renderArchivePanel(payload)}
+    ${renderInputEcho(payload.input_echo)}
+    ${renderAssumptions(assumptions)}
+    <section class="input-echo">
+      <div class="assumptions-label">FOLLOW-UP QUESTION / 继续完善问题</div>
+      <p class="analysis-copy">${escapeHtml(followUpQuestion)}</p>
+    </section>
+    <section class="questions-shell">
+      <div class="section-head section-head-single">
+        <h2 class="section-title">OPEN QUESTIONS / 继续澄清</h2>
+      </div>
+      <div class="questions-grid">${questions}</div>
+      <div class="result-actions">
+        <button class="question-submit" type="button" data-action="rerun-follow-up">
+          补充并继续完善 / RE-RUN
+        </button>
+        <button class="secondary-button" type="button" data-action="reset">重新开始 / RESET</button>
+      </div>
+    </section>
+  `;
+  showContent();
+}
+
+function renderRefinementView(payload) {
+  const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
+  const refinement = payload.refinement_result || {};
+  const affectedSections = Array.isArray(refinement.affected_sections)
+    ? refinement.affected_sections.map((item) => formatSectionKeyLabel(item))
+    : [];
+  const updates = Array.isArray(refinement.proposed_section_updates)
+    ? refinement.proposed_section_updates
+    : [];
+  const nextActions = renderListItems(refinement.next_actions || [], "当前没有额外后续动作。");
+
+  resultContent.innerHTML = `
+    ${renderStatusBar("REFINEMENT READY")}
+    ${renderArchivePanel(payload)}
+    ${renderInputEcho(payload.input_echo)}
+    ${renderAssumptions(assumptions)}
+    <section class="analysis-shell">
+      <div class="section-head section-head-single">
+        <h2 class="section-title">REFINEMENT RESULT / 局部完善结果</h2>
+      </div>
+      <div class="analysis-grid">
+        <section class="analysis-section analysis-span-12">
+          <div class="analysis-index">01</div>
+          <h3 class="analysis-title">QUESTION SUMMARY / 问题摘要</h3>
+          <p class="analysis-copy">${escapeHtml(refinement.question_summary || "N/A")}</p>
+        </section>
+        <section class="analysis-section analysis-span-12">
+          <div class="analysis-index">02</div>
+          <h3 class="analysis-title">REFINEMENT ANSWER / 局部完善回答</h3>
+          <p class="analysis-copy">${escapeHtml(refinement.refinement_answer || "N/A")}</p>
+        </section>
+        <section class="analysis-section analysis-span-12">
+          <div class="analysis-index">03</div>
+          <h3 class="analysis-title">AFFECTED SECTIONS / 受影响板块</h3>
+          ${renderArrayBlock(affectedSections)}
+        </section>
+        <section class="analysis-section analysis-span-12">
+          <div class="analysis-index">04</div>
+          <h3 class="analysis-title">PROPOSED SECTION UPDATES / 建议修改内容</h3>
+          ${renderSectionUpdates(updates)}
+        </section>
+        <section class="analysis-section analysis-span-12">
+          <div class="analysis-index">05</div>
+          <h3 class="analysis-title">NEXT ACTIONS / 后续动作</h3>
+          <ul class="analysis-list">${nextActions}</ul>
+        </section>
+      </div>
+    </section>
+    <div class="result-actions">
+      <button class="question-submit" type="button" data-action="compose-full-plan">
+        确认修改并生成新版完整方案
+      </button>
+      <button class="secondary-button" type="button" data-action="reset">
+        重新开始 / RESET
+      </button>
+    </div>
+  `;
+  showContent();
+}
+
+function renderComposedPlanView(payload) {
+  const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
+  const analysisGrid = renderAnalysisGrid(payload.analysis);
+  const refinementBlock = payload.refinement_result
+    ? `
+      <section class="followup-block">
+        <div class="assumptions-label">COMPOSED FROM / 合成来源</div>
+        <p class="analysis-copy">${escapeHtml(payload.refinement_result.refinement_answer || "")}</p>
+      </section>
+    `
+    : "";
+
+  resultContent.innerHTML = `
+    ${renderStatusBar("NEW FULL PLAN READY")}
+    ${renderArchivePanel(payload)}
+    ${renderInputEcho(payload.input_echo)}
+    ${renderAssumptions(assumptions)}
+    ${refinementBlock}
+    <section class="analysis-shell">
+      <div class="analysis-grid">${analysisGrid}</div>
+    </section>
+    ${renderOpenQuestionSuggestions(payload.open_questions || [])}
+    ${renderFollowUpEntry()}
+    <div class="result-actions">
+      <button class="secondary-button" type="button" data-action="reset">
         重新开始 / RESET
       </button>
     </div>
@@ -270,6 +569,12 @@ function renderArchivePanel(payload) {
   const sessionId = typeof payload.session_id === "string" && payload.session_id
     ? payload.session_id
     : "N/A";
+  const sessionKind = typeof payload.session_kind === "string" && payload.session_kind
+    ? payload.session_kind
+    : "analysis";
+  const parentSessionId = typeof payload.parent_session_id === "string" && payload.parent_session_id
+    ? payload.parent_session_id
+    : null;
   const archiveTitle = typeof payload.archive_title === "string" && payload.archive_title
     ? payload.archive_title
     : "N/A";
@@ -280,6 +585,14 @@ function renderArchivePanel(payload) {
   const archiveLink = typeof payload.archive_url === "string" && payload.archive_url
     ? payload.archive_url
     : null;
+  const parentRow = parentSessionId
+    ? `
+      <article class="archive-meta-item">
+        <div class="archive-meta-label">PARENT SESSION</div>
+        <div class="archive-meta-value archive-meta-mono">${escapeHtml(parentSessionId)}</div>
+      </article>
+    `
+    : "";
   const archiveAction = archiveLink
     ? `
       <div class="archive-actions">
@@ -307,6 +620,10 @@ function renderArchivePanel(payload) {
           <div class="archive-meta-value archive-meta-mono">${escapeHtml(sessionId)}</div>
         </article>
         <article class="archive-meta-item">
+          <div class="archive-meta-label">SESSION KIND</div>
+          <div class="archive-meta-value">${escapeHtml(sessionKind)}</div>
+        </article>
+        <article class="archive-meta-item">
           <div class="archive-meta-label">ARCHIVE STATUS</div>
           <div class="archive-meta-value">${escapeHtml(statusMeta.label)}</div>
         </article>
@@ -314,6 +631,7 @@ function renderArchivePanel(payload) {
           <div class="archive-meta-label">ARCHIVE TITLE</div>
           <div class="archive-meta-value">${escapeHtml(archiveTitle)}</div>
         </article>
+        ${parentRow}
       </div>
       <p class="archive-note">${escapeHtml(statusMeta.note)}</p>
       ${archiveAction}
@@ -339,9 +657,127 @@ function renderAssumptions(listHtml) {
   `;
 }
 
-function renderListItems(items) {
+function renderAnalysisGrid(analysis) {
+  return ANALYSIS_FIELDS
+    .map(([index, title, key, kind, spanClass]) => {
+      const value = analysis ? analysis[key] : null;
+      const content = kind === "list" ? renderArrayBlock(value) : renderCopyBlock(value);
+      return `
+        <section class="analysis-section ${spanClass}">
+          <div class="analysis-index">${index}</div>
+          <h3 class="analysis-title">${title}</h3>
+          ${content}
+        </section>
+      `;
+    })
+    .join("");
+}
+
+function renderClarificationRecord(clarifications) {
+  if (!Array.isArray(clarifications) || !clarifications.length) {
+    return "";
+  }
+
+  return `
+    <section class="clarification-record">
+      <div class="assumptions-label">CLARIFICATION RECORD / 已补充信息</div>
+      <div class="clarification-grid">
+        ${clarifications
+          .map((item, index) => `
+            <article class="clarification-item">
+              <div class="question-index">${String(index + 1).padStart(2, "0")}</div>
+              <p class="clarification-question">${escapeHtml(item.question)}</p>
+              <div class="clarification-answer">${escapeHtml(item.answer)}</div>
+            </article>
+          `)
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderOpenQuestionSuggestions(openQuestions) {
+  if (!Array.isArray(openQuestions) || !openQuestions.length) {
+    return "";
+  }
+
+  return `
+    <section class="followup-block">
+      <div class="assumptions-label">CONTINUE SHARPENING / 可继续打磨的问题</div>
+      <div class="followup-grid">
+        ${openQuestions
+          .map((question, index) => `
+            <div class="followup-item">
+              <div class="followup-index">${String(index + 1).padStart(2, "0")}</div>
+              <div class="followup-copy">${escapeHtml(question)}</div>
+            </div>
+          `)
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderFollowUpEntry() {
+  return `
+    <section class="followup-block">
+      <div class="assumptions-label">FOLLOW-UP / 继续完善</div>
+      <p class="analysis-copy">
+        如果你认可当前方向，但想继续收窄、补强或调整某些板块，可以继续发起一轮 follow-up。
+      </p>
+      <div class="result-actions">
+        <button class="question-submit" type="button" data-action="start-follow-up">
+          继续完善方案
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function renderQuestionCards(questions) {
+  return (questions || [])
+    .map((question, index) => `
+      <article class="question-card" data-question-card data-question="${escapeHtml(question)}">
+        <div class="question-index">${String(index + 1).padStart(2, "0")}</div>
+        <p class="question-text">${escapeHtml(question)}</p>
+        <textarea
+          class="question-input"
+          rows="4"
+          placeholder="在这里补充你的回答"
+          data-question-input
+        ></textarea>
+      </article>
+    `)
+    .join("");
+}
+
+function renderSectionUpdates(updates) {
+  if (!Array.isArray(updates) || !updates.length) {
+    return "<p class=\"analysis-copy\">暂无局部修改内容。</p>";
+  }
+
+  return `
+    <div class="clarification-grid">
+      ${updates.map((item, index) => {
+        const replacement = Array.isArray(item.updated_items) && item.updated_items.length
+          ? renderArrayBlock(item.updated_items)
+          : renderCopyBlock(item.updated_text);
+        return `
+          <article class="clarification-item">
+            <div class="question-index">${String(index + 1).padStart(2, "0")}</div>
+            <p class="clarification-question">${escapeHtml(formatSectionKeyLabel(item.section_key))}</p>
+            <div class="clarification-answer">${escapeHtml(item.change_summary || "")}</div>
+            ${replacement}
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderListItems(items, emptyCopy) {
   if (!Array.isArray(items) || !items.length) {
-    return `<li class="assumptions-item">当前没有额外假设。</li>`;
+    return `<li class="assumptions-item">${escapeHtml(emptyCopy)}</li>`;
   }
   return items
     .map((item) => `<li class="assumptions-item">${escapeHtml(String(item))}</li>`)
@@ -350,7 +786,7 @@ function renderListItems(items) {
 
 function renderArrayBlock(value) {
   if (!Array.isArray(value) || !value.length) {
-    return `<p class="analysis-copy">暂无内容。</p>`;
+    return "<p class=\"analysis-copy\">暂无内容。</p>";
   }
 
   return `
@@ -364,9 +800,28 @@ function renderArrayBlock(value) {
 
 function renderCopyBlock(value) {
   if (!value) {
-    return `<p class="analysis-copy">暂无内容。</p>`;
+    return "<p class=\"analysis-copy\">暂无内容。</p>";
   }
   return `<p class="analysis-copy">${escapeHtml(String(value))}</p>`;
+}
+
+function formatSectionKeyLabel(sectionKey) {
+  const normalized = typeof sectionKey === "string" ? sectionKey : "";
+  if (normalized && SECTION_DISPLAY_LABELS[normalized]) {
+    return SECTION_DISPLAY_LABELS[normalized];
+  }
+  if (!normalized) {
+    return "UNKNOWN / 未知板块";
+  }
+  return normalized.replaceAll("_", " ").toUpperCase();
+}
+
+function renderApiError(data, fallbackMessage) {
+  const detail = data && typeof data === "object" ? data.detail : null;
+  const message = detail && typeof detail === "object" && "message" in detail
+    ? String(detail.message)
+    : fallbackMessage;
+  renderError(message);
 }
 
 function renderError(message) {
@@ -378,8 +833,13 @@ function renderError(message) {
     <p class="result-error-copy">${escapeHtml(message)}</p>
   `;
   resultPlaceholder.classList.add("hidden");
-  resultContent.classList.add("hidden");
   resultError.classList.remove("hidden");
+
+  if (!resultContent.innerHTML.trim()) {
+    resultContent.classList.add("hidden");
+  } else {
+    resultContent.classList.remove("hidden");
+  }
 }
 
 function clearFeedback() {
@@ -395,6 +855,7 @@ function showContent() {
 
 function clearResult() {
   currentSessionId = null;
+  currentView = null;
   resultPlaceholder.classList.remove("hidden");
   resultContent.classList.add("hidden");
   resultError.classList.add("hidden");
@@ -402,9 +863,48 @@ function clearResult() {
   resultError.innerHTML = "";
 }
 
-function setLoadingState(isLoading, label) {
+function setLoadingState(isLoading, label, triggerButton) {
+  isSubmitting = isLoading;
+
+  if (isLoading) {
+    activeLoadingButton = triggerButton instanceof HTMLButtonElement ? triggerButton : null;
+    if (activeLoadingButton !== null) {
+      activeLoadingButton.dataset.originalLabel = activeLoadingButton.textContent || "";
+      activeLoadingButton.textContent = `${label} ...`;
+    }
+  }
+
+  if (!isLoading && activeLoadingButton instanceof HTMLButtonElement) {
+    const originalLabel = activeLoadingButton.dataset.originalLabel;
+    if (originalLabel) {
+      activeLoadingButton.textContent = originalLabel;
+    }
+    delete activeLoadingButton.dataset.originalLabel;
+    activeLoadingButton = null;
+  }
+
   submitButton.disabled = isLoading;
-  submitButton.textContent = isLoading ? `${label} ...` : "分析 / ANALYZE";
+  resetButton.disabled = isLoading;
+
+  if (!isLoading) {
+    submitButton.textContent = "分析 / ANALYZE";
+  }
+
+  setActionButtonsDisabled(isLoading);
+}
+
+function setActionButtonsDisabled(isDisabled) {
+  const buttons = document.querySelectorAll("button");
+  for (const button of buttons) {
+    if (!(button instanceof HTMLButtonElement)) {
+      continue;
+    }
+    if (button === activeLoadingButton) {
+      button.disabled = isDisabled;
+      continue;
+    }
+    button.disabled = isDisabled;
+  }
 }
 
 function escapeHtml(value) {
@@ -412,6 +912,6 @@ function escapeHtml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
+    .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#39;");
 }
