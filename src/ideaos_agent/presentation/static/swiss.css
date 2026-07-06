@@ -6,6 +6,11 @@
   --grey-3: #737373;
   --accent: #002fa7;
   --accent-on: #ffffff;
+  --success: #0f6a37;
+  --success-bg: #e7f4ec;
+  --danger: #a12f1f;
+  --danger-bg: #fbe9e7;
+  --info-bg: #e8eefb;
 }
 
 *,
@@ -272,6 +277,7 @@ input {
 }
 
 .assumptions-block,
+.archive-panel,
 .clarification-record,
 .followup-block {
   position: relative;
@@ -284,6 +290,7 @@ input {
 }
 
 .assumptions-block::before,
+.archive-panel::before,
 .clarification-record::before,
 .followup-block::before {
   content: "";
@@ -316,6 +323,117 @@ input {
 .clarification-grid {
   display: grid;
   gap: 14px;
+}
+
+.archive-panel {
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.archive-panel-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.archive-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--grey-2);
+  background: var(--grey-1);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.archive-panel-pending .archive-badge {
+  border-color: var(--accent);
+  background: var(--info-bg);
+  color: var(--accent);
+}
+
+.archive-panel-succeeded .archive-badge {
+  border-color: var(--success);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.archive-panel-failed .archive-badge {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.archive-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.archive-meta-item {
+  grid-column: span 4;
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--grey-2);
+}
+
+.archive-meta-label {
+  color: var(--grey-3);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.archive-meta-value,
+.archive-note {
+  line-height: 1.7;
+}
+
+.archive-meta-value {
+  word-break: break-word;
+}
+
+.archive-meta-mono {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.92rem;
+}
+
+.archive-note {
+  max-width: 52rem;
+  margin: 0;
+  color: var(--grey-3);
+}
+
+.archive-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.archive-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 18px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.archive-link:hover {
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 .clarification-item {
@@ -431,20 +549,23 @@ input {
     grid-template-columns: 1fr;
   }
 
+  .archive-meta-item,
   .question-card,
   .analysis-span-12 {
     grid-column: span 12;
   }
 
   .idea-actions,
-  .result-actions {
+  .result-actions,
+  .archive-actions {
     flex-direction: column;
   }
 
   .idea-submit,
   .question-submit,
   .secondary-button,
-  .idea-reset {
+  .idea-reset,
+  .archive-link {
     width: 100%;
   }
 }

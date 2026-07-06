@@ -1,11 +1,17 @@
-"""Core data structures for IdeaOS-Agent v0.1."""
+"""Core data structures for IdeaOS-Agent contracts."""
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from ideaos_agent.domain.archive import ArchiveStatus
 
 
 class IdeaInput(BaseModel):
     """User-provided raw idea text plus optional clarification answers."""
 
+    session_id: str | None = Field(
+        default=None,
+        description="当前会话 ID。首次请求可不传，服务端会生成；澄清续传时需原样带回。",
+    )
     content: str = Field(min_length=1, description="用户输入的原始想法文本。")
     clarifications: list["ClarificationAnswer"] = Field(
         default_factory=list,
@@ -20,6 +26,18 @@ class IdeaInput(BaseModel):
         if not value.strip():
             raise ValueError("想法输入不能为空白。")
         return value
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only session identifiers."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("session_id 不能为空白。")
+        return normalized
 
 
 class ClarificationAnswer(BaseModel):
@@ -70,9 +88,13 @@ class IdeaAnalysis(BaseModel):
     )
 
 
-class IdeaAnalysisResponse(BaseModel):
-    """Outer response wrapper for analysis mode and clarification mode."""
+class IdeaAnalysisLlmOutput(BaseModel):
+    """LLM-generated analysis payload before session/archive metadata is attached."""
 
+    archive_title: str = Field(
+        min_length=1,
+        description="用于归档文档标题的简短语义标题，不应直接复述用户原句。",
+    )
     input_echo: str = Field(
         min_length=1,
         description="对用户【原始想法】的忠实复述，建议尽量原样保留，不做扩写。",
@@ -91,17 +113,17 @@ class IdeaAnalysisResponse(BaseModel):
         description="当 needs_clarification=false 时返回完整分析，否则必须为 null。",
     )
 
-    @field_validator("input_echo")
+    @field_validator("archive_title", "input_echo")
     @classmethod
-    def validate_input_echo_not_blank(cls, value: str) -> str:
-        """Reject blank-only input echoes."""
+    def validate_required_text_not_blank(cls, value: str) -> str:
+        """Reject blank-only required text fields."""
 
         if not value.strip():
-            raise ValueError("input_echo 不能为空白。")
+            raise ValueError("归档标题与 input_echo 不能为空白。")
         return value
 
     @model_validator(mode="after")
-    def validate_consistency(self) -> "IdeaAnalysisResponse":
+    def validate_consistency(self) -> "IdeaAnalysisLlmOutput":
         """Ensure the wrapper is self-consistent and safe."""
 
         if len(self.open_questions) > 3:
@@ -115,5 +137,50 @@ class IdeaAnalysisResponse(BaseModel):
         else:
             if self.analysis is None:
                 raise ValueError("无需澄清时必须返回 analysis。")
+
+        return self
+
+
+class IdeaAnalysisResponse(IdeaAnalysisLlmOutput):
+    """API response wrapper with session metadata and archive state."""
+
+    session_id: str = Field(min_length=1, description="本次完整会话的稳定 ID。")
+    archive_status: ArchiveStatus = Field(description="当前会话的归档状态。")
+    archive_url: str | None = Field(
+        default=None,
+        description="飞书归档文档链接。仅归档成功后返回，否则为 null。",
+    )
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_response_session_id_not_blank(cls, value: str) -> str:
+        """Reject blank-only response session identifiers."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("session_id 不能为空白。")
+        return normalized
+
+    @field_validator("archive_url")
+    @classmethod
+    def validate_archive_url_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only archive URLs while allowing null."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("archive_url 不能为空白字符串。")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_archive_metadata(self) -> "IdeaAnalysisResponse":
+        """Keep archive metadata internally consistent."""
+
+        if self.archive_status == ArchiveStatus.SUCCEEDED:
+            if self.archive_url is None:
+                raise ValueError("归档成功时必须返回 archive_url。")
+        elif self.archive_url is not None:
+            raise ValueError("仅归档成功时允许返回 archive_url。")
 
         return self

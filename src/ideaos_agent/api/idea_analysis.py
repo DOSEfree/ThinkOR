@@ -4,8 +4,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ideaos_agent.api.dependencies import get_idea_analysis_service
-from ideaos_agent.application.idea_analysis_service import IdeaAnalysisService
+from ideaos_agent.api.dependencies import get_idea_analysis_session_service
+from ideaos_agent.application.idea_analysis_session_service import IdeaAnalysisSessionService
 from ideaos_agent.domain.errors import (
     IdeaInputTooLongError,
     LlmNotConfiguredError,
@@ -16,18 +16,18 @@ from ideaos_agent.domain.errors import (
 from ideaos_agent.models import IdeaAnalysisResponse, IdeaInput
 
 router = APIRouter(prefix="/api/v1", tags=["idea-analysis"])
-IdeaAnalysisServiceDependency = Annotated[
-    IdeaAnalysisService,
-    Depends(get_idea_analysis_service),
+IdeaAnalysisSessionServiceDependency = Annotated[
+    IdeaAnalysisSessionService,
+    Depends(get_idea_analysis_session_service),
 ]
 
 
 @router.post("/idea-analysis", response_model=IdeaAnalysisResponse)
 def create_idea_analysis(
     payload: IdeaInput,
-    service: IdeaAnalysisServiceDependency,
+    service: IdeaAnalysisSessionServiceDependency,
 ) -> IdeaAnalysisResponse:
-    """Generate a full IdeaAnalysis with a single LLM call."""
+    """Generate an idea analysis response with session and archive metadata."""
 
     try:
         return service.analyze(payload)

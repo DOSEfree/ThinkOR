@@ -7,6 +7,7 @@ const resetButton = document.getElementById("idea-reset");
 const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
+let currentSessionId = null;
 
 const ANALYSIS_FIELDS = [
   ["01", "SUMMARY", "summary", "copy", "analysis-span-12"],
@@ -19,6 +20,28 @@ const ANALYSIS_FIELDS = [
   ["08", "MVP ROADMAP", "mvp_roadmap", "list", "analysis-span-12"],
   ["09", "LONG-TERM ROADMAP", "long_term_roadmap", "list", "analysis-span-12"],
 ];
+const ARCHIVE_STATUS_META = {
+  not_triggered: {
+    badge: "NOT TRIGGERED",
+    label: "WAITING FOR FINAL ANALYSIS",
+    note: "Archive will be created only after this session reaches a completed analysis.",
+  },
+  pending: {
+    badge: "PENDING",
+    label: "ARCHIVE IN PROGRESS",
+    note: "The analysis is ready and the archive job has been triggered for this session.",
+  },
+  succeeded: {
+    badge: "SUCCEEDED",
+    label: "ARCHIVED TO FEISHU",
+    note: "This completed session has been archived successfully. You can open the Feishu doc below.",
+  },
+  failed: {
+    badge: "FAILED",
+    label: "ARCHIVE FAILED",
+    note: "The analysis is ready, but the Feishu archive step failed. The analysis result below is still valid.",
+  },
+};
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -28,7 +51,8 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  await submitIdea({ content, clarifications: [] }, "分析 / ANALYZE");
+  currentSessionId = null;
+  await submitIdea({ content, clarifications: [], session_id: null }, "分析 / ANALYZE");
 });
 
 resetButton.addEventListener("click", () => {
@@ -74,7 +98,10 @@ resultContent.addEventListener("click", async (event) => {
     return;
   }
 
-  await submitIdea({ content, clarifications }, "补充并重新分析 / RE-RUN");
+  await submitIdea(
+    { content, clarifications, session_id: currentSessionId },
+    "补充并重新分析 / RE-RUN",
+  );
 });
 
 async function submitIdea(payload, loadingLabel) {
@@ -99,6 +126,8 @@ async function submitIdea(payload, loadingLabel) {
       renderError(message);
       return;
     }
+
+    currentSessionId = typeof data.session_id === "string" ? data.session_id : currentSessionId;
 
     if (data.needs_clarification === true) {
       renderClarificationView(data, payload.content);
@@ -137,6 +166,7 @@ function renderClarificationView(payload, rawContent) {
 
   resultContent.innerHTML = `
     ${renderStatusBar("NEEDS CLARIFICATION")}
+    ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
     <section class="questions-shell">
@@ -210,6 +240,7 @@ function renderAnalysisView(payload, rawContent, clarifications) {
 
   resultContent.innerHTML = `
     ${renderStatusBar("ANALYSIS READY")}
+    ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
     ${clarificationRecord}
@@ -232,6 +263,61 @@ function renderStatusBar(label) {
       <div class="result-status-label">STATUS</div>
       <div class="result-status-value">${escapeHtml(label)}</div>
     </div>
+  `;
+}
+
+function renderArchivePanel(payload) {
+  const sessionId = typeof payload.session_id === "string" && payload.session_id
+    ? payload.session_id
+    : "N/A";
+  const archiveTitle = typeof payload.archive_title === "string" && payload.archive_title
+    ? payload.archive_title
+    : "N/A";
+  const archiveStatus = typeof payload.archive_status === "string" && payload.archive_status
+    ? payload.archive_status
+    : "not_triggered";
+  const statusMeta = ARCHIVE_STATUS_META[archiveStatus] || ARCHIVE_STATUS_META.not_triggered;
+  const archiveLink = typeof payload.archive_url === "string" && payload.archive_url
+    ? payload.archive_url
+    : null;
+  const archiveAction = archiveLink
+    ? `
+      <div class="archive-actions">
+        <a
+          class="archive-link"
+          href="${escapeHtml(archiveLink)}"
+          target="_blank"
+          rel="noreferrer"
+        >
+          OPEN FEISHU DOC
+        </a>
+      </div>
+    `
+    : "";
+
+  return `
+    <section class="archive-panel archive-panel-${escapeHtml(archiveStatus)}">
+      <div class="archive-panel-head">
+        <div class="assumptions-label">SESSION ARCHIVE / 归档状态</div>
+        <div class="archive-badge">${escapeHtml(statusMeta.badge)}</div>
+      </div>
+      <div class="archive-meta-grid">
+        <article class="archive-meta-item">
+          <div class="archive-meta-label">SESSION ID</div>
+          <div class="archive-meta-value archive-meta-mono">${escapeHtml(sessionId)}</div>
+        </article>
+        <article class="archive-meta-item">
+          <div class="archive-meta-label">ARCHIVE STATUS</div>
+          <div class="archive-meta-value">${escapeHtml(statusMeta.label)}</div>
+        </article>
+        <article class="archive-meta-item">
+          <div class="archive-meta-label">ARCHIVE TITLE</div>
+          <div class="archive-meta-value">${escapeHtml(archiveTitle)}</div>
+        </article>
+      </div>
+      <p class="archive-note">${escapeHtml(statusMeta.note)}</p>
+      ${archiveAction}
+    </section>
   `;
 }
 
@@ -308,6 +394,7 @@ function showContent() {
 }
 
 function clearResult() {
+  currentSessionId = null;
   resultPlaceholder.classList.remove("hidden");
   resultContent.classList.add("hidden");
   resultError.classList.add("hidden");

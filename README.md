@@ -6,17 +6,17 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 
 ## 当前阶段
 
-当前仓库已经具备代表 `v0.1` 当前稳定状态的最小闭环，重点成果包括：
+当前仓库已经具备代表 `v0.2.0` 的完整最小闭环，重点成果包括：
 
-- 明确产品边界与交互模型主线
-- 固化 Python 主体技术栈与工程基线
-- 建立文档、版本日志与 GitHub 协作规则
-- 跑通单次分析链路与无状态单轮澄清链路
-- 提供最小可运行 Web 界面与项目级环境约定
+- 保留 `v0.1` 已验证完成的单次分析链路与单轮澄清模型
+- 引入 `session_id / archive_status / archive_url` 会话归档契约
+- 接入本地 `SQLite` 最小索引，沉淀会话状态与归档结果
+- 接入飞书文档归档能力，将完整有效分析保存为可回看的资产
+- 在最小 Web 界面中展示归档状态与飞书文档链接
 
-## v0.1 核心能力
+## v0.2.0 核心能力
 
-面向单次输入的想法分析，逐步输出以下模块：
+面向单次输入的想法分析，系统仍逐步输出以下九个分析模块：
 
 1. 想法摘要
 2. 可行性分析
@@ -27,6 +27,13 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 7. 相似项目参考
 8. MVP 路线图
 9. 长期发展路线图
+
+在上述分析完成后，当前版本还会补充以下归档能力：
+
+- 首次请求生成并返回 `session_id`，用于串联“原始输入 + 单轮澄清 + 最终分析”
+- 完成态分析自动写入本地 `SQLite` 索引，记录 `archive_status`
+- 归档成功时返回 `archive_url`，可直接打开飞书文档
+- 归档失败不阻塞主分析结果返回
 
 ## 项目原则
 
@@ -97,8 +104,14 @@ python -m uvicorn ideaos_agent.main:app --reload
 
 当前入口说明：
 
-- `/app`：极简可用前端界面，可直接输入想法、回答澄清问题并查看分析结果
-- `/api/v1/idea-analysis`：后端 JSON 接口，供前端或后续外部调用使用
+- `/app`：极简可用前端界面，可直接输入想法、回答澄清问题、查看分析结果与归档状态
+- `/api/v1/idea-analysis`：后端 JSON 接口，返回分析内容以及 `session_id / archive_status / archive_url`
+
+归档相关说明：
+
+- `IDEAOS_USE_FAKE_LLM=true` 可在本地使用 fake LLM 体验完整分析流程
+- `IDEAOS_USE_FAKE_ARCHIVE=true` 可在不写入真实飞书的情况下联调归档链路
+- 如需启用真实飞书归档，请确保 `lark-cli` 已安装并完成登录
 
 ## 质量检查
 
@@ -109,14 +122,15 @@ python -m ruff format .
 python -m mypy src
 ```
 
-## v0.1 收口检查
+## v0.2.0 收口检查
 
 当前阶段建议至少确认以下事项：
 
 - 最小 FastAPI 服务可以在本地启动
 - `.env.example` 已覆盖当前环境变量约定
 - `pytest`、`ruff`、`mypy` 能在 Python `3.13` 环境中通过
-- `main` 分支能够代表当前稳定主线，并承接后续 `v0.2` 规划
+- 完成态分析会返回 `session_id / archive_status / archive_url`
+- 开启真实飞书归档后，可为同一会话生成文档并返回链接
 
 ## 版本管理
 

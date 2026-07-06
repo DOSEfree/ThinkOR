@@ -1,7 +1,12 @@
 """Dependency wiring for API routes."""
 
 from ideaos_agent.application.idea_analysis_service import IdeaAnalysisService
+from ideaos_agent.application.idea_analysis_session_service import IdeaAnalysisSessionService
 from ideaos_agent.config import AppSettings, get_settings
+from ideaos_agent.domain.archive import SessionArchiver, SessionArchiveStore
+from ideaos_agent.infrastructure.archive.fake_archiver import FakeSessionArchiver
+from ideaos_agent.infrastructure.archive.lark_cli_archiver import LarkCliSessionArchiver
+from ideaos_agent.infrastructure.archive.sqlite_store import SqliteSessionArchiveStore
 from ideaos_agent.infrastructure.llm.client import (
     HttpLlmClient,
     LlmClient,
@@ -32,11 +37,42 @@ def get_llm_client(settings: AppSettings) -> LlmClient:
 
 
 def get_idea_analysis_service() -> IdeaAnalysisService:
-    """Create the Phase 1 idea analysis service."""
+    """Create the core idea analysis service that only talks to the LLM."""
 
     settings = get_app_settings()
     return IdeaAnalysisService(
         settings=settings,
         llm_client=get_llm_client(settings),
         prompt_builder=IdeaAnalysisPromptBuilder(),
+    )
+
+
+def get_session_archive_store(settings: AppSettings) -> SessionArchiveStore:
+    """Create the local archive index store selected by configuration."""
+
+    return SqliteSessionArchiveStore(settings.archive_db_path)
+
+
+def get_session_archiver(settings: AppSettings) -> SessionArchiver:
+    """Create the archive adapter selected by configuration."""
+
+    if settings.use_fake_archive:
+        return FakeSessionArchiver()
+
+    return LarkCliSessionArchiver(
+        command=settings.feishu_cli_command,
+        archive_as=settings.feishu_archive_as,
+        parent_token=settings.feishu_archive_parent_token,
+        timeout_seconds=settings.feishu_archive_timeout_seconds,
+    )
+
+
+def get_idea_analysis_session_service() -> IdeaAnalysisSessionService:
+    """Create the v0.2 session-aware analysis service."""
+
+    settings = get_app_settings()
+    return IdeaAnalysisSessionService(
+        analysis_service=get_idea_analysis_service(),
+        session_archive_store=get_session_archive_store(settings),
+        session_archiver=get_session_archiver(settings),
     )

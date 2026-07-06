@@ -38,6 +38,7 @@ def test_thin_input_triggers_clarification_and_preserves_input_echo() -> None:
     service, _client = build_service(
         [
             {
+                "archive_title": "独立开发者产品验证工具",
                 "input_echo": raw_input,
                 "needs_clarification": True,
                 "assumptions": [
@@ -67,6 +68,7 @@ def test_two_step_flow_uses_stateless_clarifications() -> None:
     service, client = build_service(
         [
             {
+                "archive_title": "独立开发者产品验证工具",
                 "input_echo": raw_input,
                 "needs_clarification": False,
                 "assumptions": ["假设该工具先以 Web 形式提供。"],
@@ -115,6 +117,7 @@ def test_input_echo_faithfully_restates_input_in_analysis_mode() -> None:
     service, _client = build_service(
         [
             {
+                "archive_title": "独立开发者产品验证工具",
                 "input_echo": raw_input,
                 "needs_clarification": False,
                 "assumptions": ["假设它以 Web 形式提供。"],
@@ -144,6 +147,7 @@ def test_assumptions_are_kept_outside_analysis_fields() -> None:
     service, _client = build_service(
         [
             {
+                "archive_title": "独立开发者产品验证工具",
                 "input_echo": "我想做一个帮助独立开发者验证产品想法的工具。",
                 "needs_clarification": False,
                 "assumptions": ["假设该工具最终会采用订阅制。"],
@@ -178,6 +182,7 @@ def test_specific_input_can_stay_in_analysis_mode_without_clarification() -> Non
     service, _client = build_service(
         [
             {
+                "archive_title": "独立开发者 SaaS 分析工具",
                 "input_echo": raw_input,
                 "needs_clarification": False,
                 "assumptions": ["假设首版只支持文本输入。"],
@@ -209,6 +214,7 @@ def test_stateless_request_contains_entire_idea_state() -> None:
     service, client = build_service(
         [
             {
+                "archive_title": "独立开发者产品验证工具",
                 "input_echo": "我想做一个帮助独立开发者验证产品想法的工具。",
                 "needs_clarification": True,
                 "assumptions": ["假设目标用户是独立开发者。"],

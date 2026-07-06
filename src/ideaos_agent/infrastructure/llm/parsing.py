@@ -6,10 +6,10 @@ from json import JSONDecodeError
 from pydantic import ValidationError
 
 from ideaos_agent.domain.errors import LlmResponseFormatError
-from ideaos_agent.models import IdeaAnalysisResponse
+from ideaos_agent.models import IdeaAnalysisLlmOutput
 
 
-def parse_idea_analysis_response(raw_text: str) -> IdeaAnalysisResponse:
+def parse_idea_analysis_response(raw_text: str) -> IdeaAnalysisLlmOutput:
     """Parse raw LLM output into the current response wrapper contract."""
 
     normalized = _strip_code_fence(raw_text)
@@ -17,9 +17,9 @@ def parse_idea_analysis_response(raw_text: str) -> IdeaAnalysisResponse:
     coerced = _coerce_payload(payload)
 
     try:
-        return IdeaAnalysisResponse.model_validate(coerced)
+        return IdeaAnalysisLlmOutput.model_validate(coerced)
     except ValidationError as exc:
-        raise LlmResponseFormatError("LLM 返回无法解析为 IdeaAnalysisResponse。") from exc
+        raise LlmResponseFormatError("LLM 返回无法解析为 IdeaAnalysisLlmOutput。") from exc
 
 
 def _strip_code_fence(raw_text: str) -> str:

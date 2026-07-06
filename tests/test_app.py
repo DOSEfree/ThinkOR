@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from ideaos_agent.domain.archive import ArchiveStatus
 from ideaos_agent.main import app
 
 
@@ -32,10 +33,24 @@ def test_app_page_renders_html_interface() -> None:
     assert 'id="idea-content"' in response.text
     assert "/static/swiss.css" in response.text
     assert "/static/app.js" in response.text
+    assert "归档状态" in response.text
+
+
+def test_app_serves_archive_aware_frontend_script() -> None:
+    client = TestClient(app)
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
+    assert "renderArchivePanel" in response.text
+    assert "SESSION ARCHIVE / 归档状态" in response.text
+    assert "OPEN FEISHU DOC" in response.text
 
 
 def test_idea_analysis_endpoint_returns_fake_response(monkeypatch) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
     monkeypatch.setenv("IDEAOS_MAX_INPUT_CHARS", "4000")
     client = TestClient(app)
 
@@ -46,6 +61,10 @@ def test_idea_analysis_endpoint_returns_fake_response(monkeypatch) -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["session_id"].startswith("sess_")
+    assert body["archive_status"] == ArchiveStatus.NOT_TRIGGERED
+    assert body["archive_url"] is None
+    assert body["archive_title"] == "独立开发者产品验证工具"
     assert body["input_echo"] == "我想做一个帮助独立开发者验证产品想法的工具。"
     assert body["needs_clarification"] is True
     assert body["analysis"] is None

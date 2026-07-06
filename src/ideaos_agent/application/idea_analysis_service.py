@@ -4,7 +4,7 @@ from ideaos_agent.config import AppSettings
 from ideaos_agent.domain.errors import IdeaInputTooLongError, LlmNotConfiguredError
 from ideaos_agent.infrastructure.llm.client import LlmClient
 from ideaos_agent.infrastructure.llm.parsing import parse_idea_analysis_response
-from ideaos_agent.models import IdeaAnalysisResponse, IdeaInput
+from ideaos_agent.models import IdeaAnalysisLlmOutput, IdeaInput
 from ideaos_agent.prompts.idea_analysis import IdeaAnalysisPromptBuilder
 
 
@@ -22,7 +22,7 @@ class IdeaAnalysisService:
         self._llm_client = llm_client
         self._prompt_builder = prompt_builder
 
-    def analyze(self, payload: IdeaInput) -> IdeaAnalysisResponse:
+    def analyze(self, payload: IdeaInput) -> IdeaAnalysisLlmOutput:
         """Analyze a user's idea through one LLM request."""
 
         content = payload.content.strip()

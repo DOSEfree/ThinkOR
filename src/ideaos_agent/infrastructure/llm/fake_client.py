@@ -27,6 +27,7 @@ class FakeLlmClient(LlmClient):
         if not has_clarifications and not has_solution_outline:
             return json.dumps(
                 {
+                    "archive_title": "独立开发者产品验证工具",
                     "input_echo": raw_input,
                     "needs_clarification": True,
                     "assumptions": [
@@ -44,6 +45,7 @@ class FakeLlmClient(LlmClient):
 
         return json.dumps(
             {
+                "archive_title": "独立开发者产品验证工具",
                 "input_echo": raw_input,
                 "needs_clarification": False,
                 "assumptions": [
