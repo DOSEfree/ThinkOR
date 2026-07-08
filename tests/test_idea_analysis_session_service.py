@@ -10,7 +10,7 @@ from ideaos_agent.domain.archive import (
     SessionArchivePayload,
     SessionRecord,
 )
-from ideaos_agent.domain.session import SessionSnapshot
+from ideaos_agent.domain.session import SessionKind, SessionSnapshot
 from ideaos_agent.infrastructure.llm.client import LlmClient
 from ideaos_agent.models import IdeaInput
 from ideaos_agent.prompts.idea_analysis import IdeaAnalysisPromptBuilder
@@ -45,6 +45,23 @@ class InMemorySessionArchiveStore:
     def get_session_record(self, session_id: str) -> SessionRecord | None:
         return self.records.get(session_id)
 
+    def list_session_records(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionRecord]:
+        items = list(self.records.values())
+        if root_session_id is not None:
+            items = [item for item in items if item.root_session_id == root_session_id]
+        if session_kind is not None:
+            items = [item for item in items if item.session_kind == session_kind]
+        items.sort(key=lambda item: item.updated_at, reverse=True)
+        if limit is not None:
+            items = items[:limit]
+        return items
+
 
 class InMemorySessionSnapshotStore:
     """Simple in-memory snapshot store used for session-service unit tests."""
@@ -62,6 +79,23 @@ class InMemorySessionSnapshotStore:
 
     def get_session_snapshot(self, session_id: str) -> SessionSnapshot | None:
         return self.snapshots.get(session_id)
+
+    def list_session_snapshots(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionSnapshot]:
+        items = list(self.snapshots.values())
+        if root_session_id is not None:
+            items = [item for item in items if item.root_session_id == root_session_id]
+        if session_kind is not None:
+            items = [item for item in items if item.session_kind == session_kind]
+        items.sort(key=lambda item: item.updated_at, reverse=True)
+        if limit is not None:
+            items = items[:limit]
+        return items
 
 
 class FakeSessionArchiver:
@@ -148,6 +182,7 @@ def test_session_service_generates_session_id_for_first_request() -> None:
     assert result.archive_url is None
     persisted_record = archive_store.get_session_record(result.session_id)
     assert persisted_record is not None
+    assert persisted_record.root_session_id == result.session_id
     assert persisted_record.archive_status == ArchiveStatus.NOT_TRIGGERED
     assert persisted_record.completed_at is None
     assert snapshot_store.get_session_snapshot(result.session_id) is None
@@ -190,6 +225,7 @@ def test_session_service_reuses_existing_session_id_for_completed_analysis() -> 
     assert result.archive_url == "https://feishu.example.com/docx/sess_existing"
     persisted_record = archive_store.get_session_record("sess_existing")
     assert persisted_record is not None
+    assert persisted_record.root_session_id == "sess_existing"
     assert persisted_record.archive_status == ArchiveStatus.SUCCEEDED
     assert persisted_record.completed_at is not None
     assert persisted_record.archived_at is not None
@@ -198,9 +234,12 @@ def test_session_service_reuses_existing_session_id_for_completed_analysis() -> 
     assert persisted_record.archive_url == "https://feishu.example.com/docx/sess_existing"
     persisted_snapshot = snapshot_store.get_session_snapshot("sess_existing")
     assert persisted_snapshot is not None
+    assert persisted_snapshot.root_session_id == "sess_existing"
     assert persisted_snapshot.analysis is not None
     assert len(archiver.calls) == 1
     assert archiver.calls[0].archive_title == "独立开发者产品验证工具"
+    assert archiver.calls[0].root_session_id == "sess_existing"
+    assert archiver.calls[0].root_archive_url is None
 
 
 def test_session_service_marks_archive_failed_without_blocking_response() -> None:
@@ -241,9 +280,11 @@ def test_session_service_marks_archive_failed_without_blocking_response() -> Non
     assert result.analysis is not None
     persisted_record = archive_store.get_session_record("sess_failed")
     assert persisted_record is not None
+    assert persisted_record.root_session_id == "sess_failed"
     assert persisted_record.archive_status == ArchiveStatus.FAILED
     assert persisted_record.archive_error == "飞书归档失败。"
     assert persisted_record.archived_at is not None
     persisted_snapshot = snapshot_store.get_session_snapshot("sess_failed")
     assert persisted_snapshot is not None
+    assert persisted_snapshot.root_session_id == "sess_failed"
     assert persisted_snapshot.archived_at is not None

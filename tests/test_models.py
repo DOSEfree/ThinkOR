@@ -33,6 +33,7 @@ def test_idea_analysis_response_requires_archive_url_when_succeeded() -> None:
     with pytest.raises(ValidationError, match="archive_url is required when archive succeeds"):
         IdeaAnalysisResponse(
             session_id="sess_existing",
+            root_session_id="sess_existing",
             archive_status=ArchiveStatus.SUCCEEDED,
             archive_url=None,
             archive_title="儿童学习应用",
@@ -51,4 +52,23 @@ def test_idea_analysis_response_requires_archive_url_when_succeeded() -> None:
                 mvp_roadmap=["定义最小功能"],
                 long_term_roadmap=["扩大内容供给"],
             ),
+        )
+
+
+def test_idea_analysis_response_requires_root_session_id_to_match_session_id() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="Root analysis responses must use session_id as root_session_id",
+    ):
+        IdeaAnalysisResponse(
+            session_id="sess_existing",
+            root_session_id="sess_root",
+            archive_status=ArchiveStatus.NOT_TRIGGERED,
+            archive_url=None,
+            archive_title="儿童学习应用",
+            input_echo="我想做一个帮助孩子学习的应用。",
+            needs_clarification=True,
+            assumptions=[],
+            open_questions=["你最想解决什么学习问题？", "面向哪个年龄段？"],
+            analysis=None,
         )

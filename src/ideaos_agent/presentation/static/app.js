@@ -4,12 +4,18 @@ const form = document.getElementById("idea-form");
 const textarea = document.getElementById("idea-content");
 const submitButton = document.getElementById("idea-submit");
 const resetButton = document.getElementById("idea-reset");
+const historyShell = document.getElementById("history-shell");
+const historyRefreshButton = document.getElementById("history-refresh");
+const historySessionList = document.getElementById("history-session-list");
+const historyThreadContent = document.getElementById("history-thread-content");
 const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
 
 let currentSessionId = null;
 let currentView = null;
+let selectedHistorySessionId = null;
+let selectedThreadRootSessionId = null;
 let isSubmitting = false;
 let activeLoadingButton = null;
 
@@ -28,6 +34,12 @@ const ANALYSIS_FIELDS = [
 const SECTION_DISPLAY_LABELS = Object.fromEntries(
   ANALYSIS_FIELDS.map(([, title, key]) => [key, title]),
 );
+
+const SESSION_KIND_LABELS = {
+  analysis: "ANALYSIS",
+  follow_up_refinement: "FOLLOW-UP REFINEMENT",
+  full_plan_composed: "FULL PLAN COMPOSED",
+};
 
 const ARCHIVE_STATUS_META = {
   not_triggered: {
@@ -77,6 +89,44 @@ resetButton.addEventListener("click", () => {
   clearResult();
   textarea.focus();
 });
+
+void initializeHistory();
+
+if (historyRefreshButton instanceof HTMLButtonElement) {
+  historyRefreshButton.addEventListener("click", async () => {
+    if (isSubmitting) {
+      return;
+    }
+    await loadRecentSessions();
+    if (selectedThreadRootSessionId) {
+      await loadThreadView(selectedThreadRootSessionId);
+    }
+  });
+}
+
+if (historyShell instanceof HTMLElement) {
+  historyShell.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || isSubmitting) {
+      return;
+    }
+
+    if (target.matches("[data-action='open-history-session']")) {
+      const sessionId = target.getAttribute("data-session-id");
+      if (sessionId) {
+        await openHistorySession(sessionId);
+      }
+      return;
+    }
+
+    if (target.matches("[data-action='continue-history-follow-up']")) {
+      const sessionId = target.getAttribute("data-session-id");
+      if (sessionId) {
+        await openHistorySession(sessionId, { openComposer: true });
+      }
+    }
+  });
+}
 
 resultContent.addEventListener("click", async (event) => {
   const target = event.target;
@@ -236,12 +286,13 @@ async function handleComposeFullPlan(triggerButton) {
 
     currentSessionId = typeof data.session_id === "string" ? data.session_id : null;
     currentView = {
-      kind: "analysis",
+      kind: "full_plan_composed",
       sessionId: data.session_id,
       rawContent: currentView.rawContent,
       clarifications: [],
     };
     renderComposedPlanView(data);
+    await refreshHistoryAfterMutation(data);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "网络异常，请稍后重试。");
   } finally {
@@ -277,6 +328,7 @@ async function submitIdea(payload, loadingLabel, triggerButton) {
         rawContent: payload.content,
       };
       renderClarificationView(data, payload.content);
+      await refreshHistoryAfterMutation(data);
       return;
     }
 
@@ -288,6 +340,7 @@ async function submitIdea(payload, loadingLabel, triggerButton) {
         clarifications: payload.clarifications || [],
       };
       renderAnalysisView(data, payload.content, payload.clarifications || []);
+      await refreshHistoryAfterMutation(data);
       return;
     }
 
@@ -329,6 +382,7 @@ async function submitFollowUpRefine(payload, loadingLabel, triggerButton) {
         followUpQuestion: payload.question,
       };
       renderFollowUpClarificationView(data, payload.question);
+      await refreshHistoryAfterMutation(data);
       return;
     }
 
@@ -340,11 +394,279 @@ async function submitFollowUpRefine(payload, loadingLabel, triggerButton) {
       followUpQuestion: payload.question,
     };
     renderRefinementView(data);
+    await refreshHistoryAfterMutation(data);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "网络异常，请稍后重试。");
   } finally {
     setLoadingState(false, "分析 / ANALYZE", triggerButton);
   }
+}
+
+async function initializeHistory() {
+  await loadRecentSessions();
+}
+
+async function refreshHistoryAfterMutation(payload) {
+  await loadRecentSessions();
+
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
+  const rootSessionId = typeof payload.root_session_id === "string" ? payload.root_session_id : null;
+
+  if (sessionId) {
+    selectedHistorySessionId = sessionId;
+  }
+  if (rootSessionId) {
+    selectedThreadRootSessionId = rootSessionId;
+    await loadThreadView(rootSessionId);
+  }
+}
+
+async function loadRecentSessions() {
+  if (!(historySessionList instanceof HTMLElement)) {
+    return;
+  }
+
+  historySessionList.innerHTML = "<p class=\"history-empty\">Loading recent sessions...</p>";
+
+  try {
+    const response = await fetch("/api/v1/sessions?limit=12");
+    const data = await response.json().catch(() => ({ items: [] }));
+
+    if (!response.ok) {
+      historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load recent sessions.</p>";
+      return;
+    }
+
+    const items = Array.isArray(data.items) ? data.items : [];
+    renderHistorySessionList(items);
+  } catch (_error) {
+    historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load recent sessions.</p>";
+  }
+}
+
+async function loadThreadView(rootSessionId) {
+  if (!(historyThreadContent instanceof HTMLElement) || !rootSessionId) {
+    return;
+  }
+
+  historyThreadContent.innerHTML = "<p class=\"history-empty\">Loading thread...</p>";
+
+  try {
+    const response = await fetch(`/api/v1/threads/${encodeURIComponent(rootSessionId)}`);
+    const data = await response.json().catch(() => ({ items: [] }));
+
+    if (!response.ok) {
+      historyThreadContent.innerHTML = "<p class=\"history-empty\">Failed to load thread.</p>";
+      return;
+    }
+
+    selectedThreadRootSessionId = rootSessionId;
+    renderThreadView(data);
+  } catch (_error) {
+    historyThreadContent.innerHTML = "<p class=\"history-empty\">Failed to load thread.</p>";
+  }
+}
+
+async function openHistorySession(sessionId, options = {}) {
+  const { openComposer = false } = options;
+
+  clearFeedback();
+
+  try {
+    const response = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`);
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      renderApiError(data, "Failed to load session detail.");
+      return;
+    }
+
+    selectedHistorySessionId = data.session_id;
+    selectedThreadRootSessionId = data.root_session_id;
+    currentSessionId = typeof data.session_id === "string" ? data.session_id : currentSessionId;
+    populateInputFromDetail(data);
+    renderHistoryDetail(data);
+    await loadRecentSessions();
+    await loadThreadView(data.root_session_id);
+
+    if (openComposer && data.can_continue_follow_up) {
+      renderFollowUpComposer();
+    }
+  } catch (_error) {
+    renderError("Failed to load session detail.");
+  }
+}
+
+function renderHistorySessionList(items) {
+  if (!(historySessionList instanceof HTMLElement)) {
+    return;
+  }
+
+  if (!Array.isArray(items) || !items.length) {
+    historySessionList.innerHTML = "<p class=\"history-empty\">No completed local sessions yet.</p>";
+    return;
+  }
+
+  historySessionList.innerHTML = `
+    <div class="history-list">
+      ${items.map((item) => renderHistorySessionItem(item)).join("")}
+    </div>
+  `;
+}
+
+function renderHistorySessionItem(item) {
+  const statusMeta = getArchiveStatusMeta(item.archive_status);
+  const isActive = item.session_id === selectedHistorySessionId;
+  const continueAction = item.can_continue_follow_up
+    ? `
+      <button
+        class="history-open"
+        type="button"
+        data-action="continue-history-follow-up"
+        data-session-id="${escapeHtml(item.session_id)}"
+      >
+        继续完善 / CONTINUE FOLLOW-UP
+      </button>
+    `
+    : "";
+
+  return `
+    <article class="history-item ${isActive ? "is-active" : ""}">
+      <div class="history-item-head">
+        <div>
+          <h3 class="history-item-title">${escapeHtml(item.archive_title || "Untitled Session")}</h3>
+          <p class="history-item-copy">${escapeHtml(formatSessionKindLabel(item.session_kind))}</p>
+        </div>
+        <div class="history-item-meta">
+          <span class="history-tag ${getHistoryStatusClass(item.archive_status)}">${escapeHtml(statusMeta.badge)}</span>
+        </div>
+      </div>
+      <p class="history-item-copy">Session ${escapeHtml(item.session_id)}</p>
+      <p class="history-item-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
+      <div class="history-item-actions">
+        <button
+          class="history-open"
+          type="button"
+          data-action="open-history-session"
+          data-session-id="${escapeHtml(item.session_id)}"
+        >
+          打开详情 / OPEN DETAIL
+        </button>
+        ${continueAction}
+      </div>
+    </article>
+  `;
+}
+
+function renderThreadView(payload) {
+  if (!(historyThreadContent instanceof HTMLElement)) {
+    return;
+  }
+
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    historyThreadContent.innerHTML = "<p class=\"history-empty\">No sessions found in this thread.</p>";
+    return;
+  }
+
+  const rootTitle = items[0].archive_title || "Untitled Thread";
+  historyThreadContent.innerHTML = `
+    <section class="thread-panel-headline">
+      <div class="assumptions-label">THREAD ROOT / 根链路</div>
+      <h3 class="thread-title">${escapeHtml(rootTitle)}</h3>
+      <p class="thread-meta-copy">Root session ${escapeHtml(payload.root_session_id || "")}</p>
+    </section>
+    <div class="history-list">
+      ${items.map((item) => renderThreadItem(item)).join("")}
+    </div>
+  `;
+}
+
+function renderThreadItem(item) {
+  const isActive = item.session_id === selectedHistorySessionId;
+  const continueAction = item.can_continue_follow_up
+    ? `
+      <button
+        class="history-thread-action"
+        type="button"
+        data-action="continue-history-follow-up"
+        data-session-id="${escapeHtml(item.session_id)}"
+      >
+        从这里继续 / CONTINUE HERE
+      </button>
+    `
+    : "";
+
+  return `
+    <article class="thread-item ${isActive ? "is-active" : ""}">
+      <div class="thread-item-head">
+        <div>
+          <h3 class="thread-item-title">${escapeHtml(item.archive_title || "Untitled Session")}</h3>
+          <p class="thread-meta-copy">${escapeHtml(formatSessionKindLabel(item.session_kind))}</p>
+        </div>
+        <div class="history-item-meta">
+          <span class="history-tag ${getHistoryStatusClass(item.archive_status)}">${escapeHtml(getArchiveStatusMeta(item.archive_status).badge)}</span>
+        </div>
+      </div>
+      <p class="thread-meta-copy">Session ${escapeHtml(item.session_id)}</p>
+      <p class="thread-meta-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
+      <div class="thread-item-actions">
+        <button
+          class="history-thread-action"
+          type="button"
+          data-action="open-history-session"
+          data-session-id="${escapeHtml(item.session_id)}"
+        >
+          查看结果 / VIEW RESULT
+        </button>
+        ${continueAction}
+      </div>
+    </article>
+  `;
+}
+
+function renderHistoryDetail(detail) {
+  const sessionKind = typeof detail.session_kind === "string" ? detail.session_kind : "analysis";
+  const clarifications = Array.isArray(detail.clarifications) ? detail.clarifications : [];
+
+  if (sessionKind === "analysis") {
+    currentView = {
+      kind: "analysis",
+      sessionId: detail.session_id,
+      rawContent: detail.original_content,
+      clarifications,
+    };
+    renderAnalysisView(detail, detail.original_content, clarifications);
+    return;
+  }
+
+  if (sessionKind === "follow_up_refinement") {
+    currentView = {
+      kind: "follow_up_refinement",
+      sessionId: detail.session_id,
+      parentSessionId: detail.parent_session_id,
+      rawContent: detail.original_content,
+      followUpQuestion: detail.follow_up_question || "",
+    };
+    renderRefinementView(detail);
+    return;
+  }
+
+  currentView = {
+    kind: "full_plan_composed",
+    sessionId: detail.session_id,
+    rawContent: detail.original_content,
+    clarifications,
+  };
+  renderComposedPlanView(detail);
+}
+
+function populateInputFromDetail(detail) {
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  textarea.value = typeof detail.original_content === "string" ? detail.original_content : "";
 }
 
 function renderClarificationView(payload, rawContent) {
@@ -399,7 +721,10 @@ function renderAnalysisView(payload, rawContent, clarifications) {
 }
 
 function renderFollowUpComposer() {
-  if (!currentView || currentView.kind !== "analysis") {
+  if (
+    !currentView
+    || (currentView.kind !== "analysis" && currentView.kind !== "full_plan_composed")
+  ) {
     return;
   }
   const existingComposer = resultContent.querySelector("[data-follow-up-composer]");
@@ -569,6 +894,9 @@ function renderArchivePanel(payload) {
   const sessionId = typeof payload.session_id === "string" && payload.session_id
     ? payload.session_id
     : "N/A";
+  const rootSessionId = typeof payload.root_session_id === "string" && payload.root_session_id
+    ? payload.root_session_id
+    : null;
   const sessionKind = typeof payload.session_kind === "string" && payload.session_kind
     ? payload.session_kind
     : "analysis";
@@ -590,6 +918,14 @@ function renderArchivePanel(payload) {
       <article class="archive-meta-item">
         <div class="archive-meta-label">PARENT SESSION</div>
         <div class="archive-meta-value archive-meta-mono">${escapeHtml(parentSessionId)}</div>
+      </article>
+    `
+    : "";
+  const rootRow = rootSessionId
+    ? `
+      <article class="archive-meta-item">
+        <div class="archive-meta-label">ROOT SESSION</div>
+        <div class="archive-meta-value archive-meta-mono">${escapeHtml(rootSessionId)}</div>
       </article>
     `
     : "";
@@ -631,6 +967,7 @@ function renderArchivePanel(payload) {
           <div class="archive-meta-label">ARCHIVE TITLE</div>
           <div class="archive-meta-value">${escapeHtml(archiveTitle)}</div>
         </article>
+        ${rootRow}
         ${parentRow}
       </div>
       <p class="archive-note">${escapeHtml(statusMeta.note)}</p>
@@ -816,6 +1153,49 @@ function formatSectionKeyLabel(sectionKey) {
   return normalized.replaceAll("_", " ").toUpperCase();
 }
 
+function formatSessionKindLabel(sessionKind) {
+  const normalized = typeof sessionKind === "string" ? sessionKind : "";
+  return SESSION_KIND_LABELS[normalized] || normalized.replaceAll("_", " ").toUpperCase();
+}
+
+function getArchiveStatusMeta(archiveStatus) {
+  const normalized = typeof archiveStatus === "string" ? archiveStatus : "not_triggered";
+  return ARCHIVE_STATUS_META[normalized] || ARCHIVE_STATUS_META.not_triggered;
+}
+
+function getHistoryStatusClass(archiveStatus) {
+  const normalized = typeof archiveStatus === "string" ? archiveStatus : "not_triggered";
+  if (normalized === "succeeded") {
+    return "history-tag-success";
+  }
+  if (normalized === "failed") {
+    return "history-tag-failed";
+  }
+  if (normalized === "pending") {
+    return "history-tag-pending";
+  }
+  return "";
+}
+
+function formatDateTime(value) {
+  if (typeof value !== "string" || !value) {
+    return "N/A";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function renderApiError(data, fallbackMessage) {
   const detail = data && typeof data === "object" ? data.detail : null;
   const message = detail && typeof detail === "object" && "message" in detail
@@ -856,11 +1236,15 @@ function showContent() {
 function clearResult() {
   currentSessionId = null;
   currentView = null;
+  selectedHistorySessionId = null;
   resultPlaceholder.classList.remove("hidden");
   resultContent.classList.add("hidden");
   resultError.classList.add("hidden");
   resultContent.innerHTML = "";
   resultError.innerHTML = "";
+  if (historyThreadContent instanceof HTMLElement) {
+    historyThreadContent.innerHTML = "<p class=\"history-empty\">Select a session to inspect its thread.</p>";
+  }
 }
 
 function setLoadingState(isLoading, label, triggerButton) {

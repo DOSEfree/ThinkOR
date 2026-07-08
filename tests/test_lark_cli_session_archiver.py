@@ -15,6 +15,8 @@ from ideaos_agent.infrastructure.archive.lark_cli_archiver import LarkCliSession
 def build_payload() -> SessionArchivePayload:
     return SessionArchivePayload(
         session_id="sess_archive",
+        root_session_id="sess_archive",
+        root_archive_url="https://feishu.example.com/docx/sess_archive",
         parent_session_id=None,
         parent_archive_url=None,
         session_kind=SessionKind.ANALYSIS,

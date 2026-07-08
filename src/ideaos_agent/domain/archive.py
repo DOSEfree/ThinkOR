@@ -23,6 +23,10 @@ class SessionRecord(BaseModel):
     """Minimal local session index model for status tracking."""
 
     session_id: str = Field(min_length=1, description="Stable session ID.")
+    root_session_id: str = Field(
+        min_length=1,
+        description="Stable root session ID for the whole idea thread.",
+    )
     parent_session_id: str | None = Field(
         default=None,
         description="Immediate parent session, if any.",
@@ -65,6 +69,7 @@ class SessionRecord(BaseModel):
 
     @field_validator(
         "session_id",
+        "root_session_id",
         "parent_session_id",
         "original_content",
         "input_echo",
@@ -86,11 +91,15 @@ class SessionRecord(BaseModel):
     def validate_archive_consistency(self) -> "SessionRecord":
         """Keep persisted archive state internally consistent."""
 
-        if self.session_kind == SessionKind.ANALYSIS and self.parent_session_id is not None:
-            raise ValueError("Analysis session records must not include parent_session_id.")
+        if self.session_kind == SessionKind.ANALYSIS:
+            if self.parent_session_id is not None:
+                raise ValueError("Analysis session records must not include parent_session_id.")
+            if self.root_session_id != self.session_id:
+                raise ValueError("Analysis session records must use session_id as root_session_id.")
 
-        if self.session_kind != SessionKind.ANALYSIS and self.parent_session_id is None:
-            raise ValueError("Follow-up/composed session records require parent_session_id.")
+        if self.session_kind != SessionKind.ANALYSIS:
+            if self.parent_session_id is None:
+                raise ValueError("Follow-up/composed session records require parent_session_id.")
 
         if self.archive_status == ArchiveStatus.NOT_TRIGGERED:
             if self.completed_at is not None:
@@ -131,6 +140,14 @@ class SessionArchivePayload(BaseModel):
     """Complete archive payload passed to an archive adapter."""
 
     session_id: str = Field(min_length=1, description="Session ID.")
+    root_session_id: str = Field(
+        min_length=1,
+        description="Stable root session ID for the whole idea thread.",
+    )
+    root_archive_url: str | None = Field(
+        default=None,
+        description="Root archive URL, if the root session was archived successfully.",
+    )
     parent_session_id: str | None = Field(
         default=None,
         description="Immediate parent session ID, if any.",
@@ -169,6 +186,8 @@ class SessionArchivePayload(BaseModel):
 
     @field_validator(
         "session_id",
+        "root_session_id",
+        "root_archive_url",
         "parent_session_id",
         "parent_archive_url",
         "archive_title",
@@ -192,6 +211,8 @@ class SessionArchivePayload(BaseModel):
         """Keep archive payload shape aligned with the session kind."""
 
         if self.session_kind == SessionKind.ANALYSIS:
+            if self.root_session_id != self.session_id:
+                raise ValueError("Analysis archives must use session_id as root_session_id.")
             if self.parent_session_id is not None:
                 raise ValueError("Analysis archives must not include parent_session_id.")
             if self.follow_up_question is not None:
@@ -270,6 +291,15 @@ class SessionArchiveStore(Protocol):
 
     def get_session_record(self, session_id: str) -> SessionRecord | None:
         """Fetch one session index record by session ID."""
+
+    def list_session_records(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionRecord]:
+        """List session index records for history and thread queries."""
 
 
 class SessionArchiver(Protocol):

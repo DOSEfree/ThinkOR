@@ -54,6 +54,7 @@ input {
 }
 
 .page-header,
+.history-shell,
 .result-shell {
   grid-column: 1 / -1;
   border-top: 1px solid var(--ink);
@@ -62,6 +63,10 @@ input {
 
 .idea-panel {
   grid-column: 1 / -1;
+  padding-top: 4px;
+}
+
+.history-shell {
   padding-top: 4px;
 }
 
@@ -131,6 +136,13 @@ input {
   gap: 0;
   align-items: center;
   justify-items: start;
+}
+
+.section-head-single .section-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  line-height: 1.35;
 }
 
 .section-title {
@@ -228,6 +240,172 @@ input {
 
 .result-shell {
   background: transparent;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.history-panel {
+  grid-column: span 6;
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--grey-2);
+}
+
+.history-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-panel-copy,
+.history-empty,
+.history-item-copy,
+.thread-meta-copy {
+  margin: 0;
+  color: var(--grey-3);
+  line-height: 1.65;
+}
+
+.history-panel-copy {
+  max-width: 34rem;
+  font-size: 0.9rem;
+}
+
+.history-panel-body {
+  display: grid;
+  gap: 10px;
+}
+
+.history-refresh,
+.history-open,
+.history-thread-action {
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  min-height: 40px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.history-refresh:hover,
+.history-open:hover,
+.history-thread-action:hover {
+  background: var(--grey-1);
+}
+
+.history-refresh:disabled,
+.history-open:disabled,
+.history-thread-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.history-item,
+.thread-item {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid var(--grey-2);
+  background: var(--grey-1);
+}
+
+.history-item.is-active,
+.thread-item.is-active {
+  border-top-color: var(--accent);
+  background: var(--info-bg);
+}
+
+.history-item-head,
+.thread-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-item-title,
+.thread-item-title {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.history-item-meta,
+.thread-item-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.history-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--grey-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.history-tag.history-tag-success {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.history-tag.history-tag-failed {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.history-tag.history-tag-pending {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--info-bg);
+}
+
+.history-item-copy,
+.thread-meta-copy {
+  font-size: 0.9rem;
+}
+
+.history-item-actions,
+.thread-item-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.thread-panel-headline {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-top: 1px solid var(--grey-2);
+}
+
+.thread-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
 .result-placeholder,
@@ -537,6 +715,10 @@ input {
 }
 
 @media (max-width: 1100px) {
+  .history-panel {
+    grid-column: span 12;
+  }
+
   .question-card {
     grid-column: span 6;
   }
@@ -565,13 +747,16 @@ input {
 
   .archive-meta-item,
   .question-card,
+  .history-panel,
   .analysis-span-12 {
     grid-column: span 12;
   }
 
   .idea-actions,
   .result-actions,
-  .archive-actions {
+  .archive-actions,
+  .history-item-actions,
+  .thread-item-actions {
     flex-direction: column;
   }
 
@@ -579,7 +764,10 @@ input {
   .question-submit,
   .secondary-button,
   .idea-reset,
-  .archive-link {
+  .archive-link,
+  .history-refresh,
+  .history-open,
+  .history-thread-action {
     width: 100%;
   }
 }

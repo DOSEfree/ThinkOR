@@ -36,6 +36,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     """
                     INSERT INTO session_records (
                         session_id,
+                        root_session_id,
                         parent_session_id,
                         session_kind,
                         original_content,
@@ -48,7 +49,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         completed_at,
                         archived_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._record_to_row(persisted_record),
                 )
@@ -57,6 +58,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     """
                     UPDATE session_records
                     SET
+                        root_session_id = ?,
                         parent_session_id = ?,
                         session_kind = ?,
                         original_content = ?,
@@ -71,6 +73,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     WHERE session_id = ?
                     """,
                     (
+                        persisted_record.root_session_id,
                         persisted_record.parent_session_id,
                         persisted_record.session_kind.value,
                         persisted_record.original_content,
@@ -100,6 +103,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 """
                 SELECT
                     session_id,
+                    root_session_id,
                     parent_session_id,
                     session_kind,
                     original_content,
@@ -123,6 +127,11 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
 
         return SessionRecord(
             session_id=str(row["session_id"]),
+            root_session_id=self._resolve_root_session_id(
+                session_id=str(row["session_id"]),
+                session_kind=SessionKind(str(row["session_kind"])),
+                stored_root_session_id=row["root_session_id"],
+            ),
             parent_session_id=self._nullable_text(row["parent_session_id"]),
             session_kind=SessionKind(str(row["session_kind"])),
             original_content=str(row["original_content"]),
@@ -136,6 +145,53 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             archived_at=self._parse_datetime(row["archived_at"]),
             updated_at=self._parse_required_datetime(str(row["updated_at"])),
         )
+
+    def list_session_records(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionRecord]:
+        """List session index records for history and thread queries."""
+
+        sql = """
+            SELECT
+                session_id,
+                root_session_id,
+                parent_session_id,
+                session_kind,
+                original_content,
+                input_echo,
+                clarification_count,
+                archive_status,
+                archive_url,
+                archive_error,
+                created_at,
+                completed_at,
+                archived_at,
+                updated_at
+            FROM session_records
+        """
+        conditions: list[str] = []
+        parameters: list[object] = []
+        if root_session_id is not None:
+            conditions.append("root_session_id = ?")
+            parameters.append(self._normalize_session_id(root_session_id))
+        if session_kind is not None:
+            conditions.append("session_kind = ?")
+            parameters.append(session_kind.value)
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY updated_at DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            parameters.append(self._normalize_positive_limit(limit))
+
+        with self._connect() as connection:
+            rows = connection.execute(sql, tuple(parameters)).fetchall()
+
+        return [self._row_to_session_record(row) for row in rows]
 
     def save_session_snapshot(self, snapshot: SessionSnapshot) -> SessionSnapshot:
         """Create or update a structured session snapshot while preserving created_at."""
@@ -151,6 +207,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     """
                     INSERT INTO session_snapshots (
                         session_id,
+                        root_session_id,
                         parent_session_id,
                         session_kind,
                         archive_title,
@@ -166,7 +223,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         completed_at,
                         archived_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._snapshot_to_row(persisted_snapshot),
                 )
@@ -175,6 +232,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     """
                     UPDATE session_snapshots
                     SET
+                        root_session_id = ?,
                         parent_session_id = ?,
                         session_kind = ?,
                         archive_title = ?,
@@ -192,6 +250,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     WHERE session_id = ?
                     """,
                     (
+                        persisted_snapshot.root_session_id,
                         persisted_snapshot.parent_session_id,
                         persisted_snapshot.session_kind.value,
                         persisted_snapshot.archive_title,
@@ -234,6 +293,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 """
                 SELECT
                     session_id,
+                    root_session_id,
                     parent_session_id,
                     session_kind,
                     archive_title,
@@ -264,34 +324,76 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
         analysis_data = self._nullable_json(row["analysis_json"])
         refinement_data = self._nullable_json(row["refinement_json"])
 
-        return SessionSnapshot(
-            session_id=str(row["session_id"]),
-            parent_session_id=self._nullable_text(row["parent_session_id"]),
-            session_kind=SessionKind(str(row["session_kind"])),
-            archive_title=str(row["archive_title"]),
-            original_content=str(row["original_content"]),
-            input_echo=str(row["input_echo"]),
-            follow_up_question=self._nullable_text(row["follow_up_question"]),
-            clarifications=[
-                SessionClarificationRecord.model_validate(item) for item in clarifications_data
-            ],
-            assumptions=[str(item) for item in assumptions_data],
-            open_questions=[str(item) for item in open_questions_data],
-            analysis=(
-                IdeaAnalysis.model_validate(analysis_data)
-                if analysis_data is not None
-                else None
-            ),
-            refinement_result=(
-                RefinementResult.model_validate(refinement_data)
-                if refinement_data is not None
-                else None
-            ),
-            created_at=self._parse_required_datetime(str(row["created_at"])),
-            completed_at=self._parse_required_datetime(str(row["completed_at"])),
-            archived_at=self._parse_datetime(row["archived_at"]),
-            updated_at=self._parse_required_datetime(str(row["updated_at"])),
+        return self._row_to_session_snapshot(
+            row,
+            clarifications_data=clarifications_data,
+            assumptions_data=assumptions_data,
+            open_questions_data=open_questions_data,
+            analysis_data=analysis_data,
+            refinement_data=refinement_data,
         )
+
+    def list_session_snapshots(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionSnapshot]:
+        """List structured session snapshots for history and thread queries."""
+
+        sql = """
+            SELECT
+                session_id,
+                root_session_id,
+                parent_session_id,
+                session_kind,
+                archive_title,
+                original_content,
+                input_echo,
+                follow_up_question,
+                clarifications_json,
+                assumptions_json,
+                open_questions_json,
+                analysis_json,
+                refinement_json,
+                created_at,
+                completed_at,
+                archived_at,
+                updated_at
+            FROM session_snapshots
+        """
+        conditions: list[str] = []
+        parameters: list[object] = []
+        if root_session_id is not None:
+            conditions.append("root_session_id = ?")
+            parameters.append(self._normalize_session_id(root_session_id))
+        if session_kind is not None:
+            conditions.append("session_kind = ?")
+            parameters.append(session_kind.value)
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY updated_at DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            parameters.append(self._normalize_positive_limit(limit))
+
+        with self._connect() as connection:
+            rows = connection.execute(sql, tuple(parameters)).fetchall()
+
+        snapshots: list[SessionSnapshot] = []
+        for row in rows:
+            snapshots.append(
+                self._row_to_session_snapshot(
+                    row,
+                    clarifications_data=self._from_json(str(row["clarifications_json"])),
+                    assumptions_data=self._from_json(str(row["assumptions_json"])),
+                    open_questions_data=self._from_json(str(row["open_questions_json"])),
+                    analysis_data=self._nullable_json(row["analysis_json"]),
+                    refinement_data=self._nullable_json(row["refinement_json"]),
+                )
+            )
+        return snapshots
 
     def _initialize(self) -> None:
         """Ensure the SQLite database and schema exist."""
@@ -302,6 +404,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 """
                 CREATE TABLE IF NOT EXISTS session_records (
                     session_id TEXT PRIMARY KEY,
+                    root_session_id TEXT NOT NULL DEFAULT '',
                     parent_session_id TEXT,
                     session_kind TEXT NOT NULL DEFAULT 'analysis',
                     original_content TEXT NOT NULL,
@@ -325,11 +428,17 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     "ALTER TABLE session_records "
                     "ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'analysis'"
                 )
+            if "root_session_id" not in record_columns:
+                connection.execute(
+                    "ALTER TABLE session_records "
+                    "ADD COLUMN root_session_id TEXT NOT NULL DEFAULT ''"
+                )
 
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS session_snapshots (
                     session_id TEXT PRIMARY KEY,
+                    root_session_id TEXT NOT NULL DEFAULT '',
                     parent_session_id TEXT,
                     session_kind TEXT NOT NULL,
                     archive_title TEXT NOT NULL,
@@ -348,6 +457,12 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 )
                 """
             )
+            snapshot_columns = self._get_column_names(connection, "session_snapshots")
+            if "root_session_id" not in snapshot_columns:
+                connection.execute(
+                    "ALTER TABLE session_snapshots "
+                    "ADD COLUMN root_session_id TEXT NOT NULL DEFAULT ''"
+                )
 
     def _connect(self) -> sqlite3.Connection:
         """Open a SQLite connection with row access by column name."""
@@ -362,6 +477,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
 
         return (
             record.session_id,
+            record.root_session_id,
             record.parent_session_id,
             record.session_kind.value,
             record.original_content,
@@ -376,11 +492,38 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             self._serialize_datetime(record.updated_at),
         )
 
+    def _row_to_session_record(self, row: sqlite3.Row) -> SessionRecord:
+        """Convert one SQLite row into a session record model."""
+
+        session_kind = SessionKind(str(row["session_kind"]))
+        session_id = str(row["session_id"])
+        return SessionRecord(
+            session_id=session_id,
+            root_session_id=self._resolve_root_session_id(
+                session_id=session_id,
+                session_kind=session_kind,
+                stored_root_session_id=row["root_session_id"],
+            ),
+            parent_session_id=self._nullable_text(row["parent_session_id"]),
+            session_kind=session_kind,
+            original_content=str(row["original_content"]),
+            input_echo=str(row["input_echo"]),
+            clarification_count=int(row["clarification_count"]),
+            archive_status=ArchiveStatus(str(row["archive_status"])),
+            archive_url=self._nullable_text(row["archive_url"]),
+            archive_error=self._nullable_text(row["archive_error"]),
+            created_at=self._parse_required_datetime(str(row["created_at"])),
+            completed_at=self._parse_datetime(row["completed_at"]),
+            archived_at=self._parse_datetime(row["archived_at"]),
+            updated_at=self._parse_required_datetime(str(row["updated_at"])),
+        )
+
     def _snapshot_to_row(self, snapshot: SessionSnapshot) -> tuple[object, ...]:
         """Convert a session snapshot into SQLite parameters."""
 
         return (
             snapshot.session_id,
+            snapshot.root_session_id,
             snapshot.parent_session_id,
             snapshot.session_kind.value,
             snapshot.archive_title,
@@ -402,6 +545,54 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             self._serialize_datetime(snapshot.completed_at),
             self._serialize_datetime(snapshot.archived_at),
             self._serialize_datetime(snapshot.updated_at),
+        )
+
+    def _row_to_session_snapshot(
+        self,
+        row: sqlite3.Row,
+        *,
+        clarifications_data: list[object],
+        assumptions_data: list[object],
+        open_questions_data: list[object],
+        analysis_data: dict[str, object] | None,
+        refinement_data: dict[str, object] | None,
+    ) -> SessionSnapshot:
+        """Convert one SQLite row into a structured session snapshot."""
+
+        session_kind = SessionKind(str(row["session_kind"]))
+        session_id = str(row["session_id"])
+        return SessionSnapshot(
+            session_id=session_id,
+            root_session_id=self._resolve_root_session_id(
+                session_id=session_id,
+                session_kind=session_kind,
+                stored_root_session_id=row["root_session_id"],
+            ),
+            parent_session_id=self._nullable_text(row["parent_session_id"]),
+            session_kind=session_kind,
+            archive_title=str(row["archive_title"]),
+            original_content=str(row["original_content"]),
+            input_echo=str(row["input_echo"]),
+            follow_up_question=self._nullable_text(row["follow_up_question"]),
+            clarifications=[
+                SessionClarificationRecord.model_validate(item) for item in clarifications_data
+            ],
+            assumptions=[str(item) for item in assumptions_data],
+            open_questions=[str(item) for item in open_questions_data],
+            analysis=(
+                IdeaAnalysis.model_validate(analysis_data)
+                if analysis_data is not None
+                else None
+            ),
+            refinement_result=(
+                RefinementResult.model_validate(refinement_data)
+                if refinement_data is not None
+                else None
+            ),
+            created_at=self._parse_required_datetime(str(row["created_at"])),
+            completed_at=self._parse_required_datetime(str(row["completed_at"])),
+            archived_at=self._parse_datetime(row["archived_at"]),
+            updated_at=self._parse_required_datetime(str(row["updated_at"])),
         )
 
     def _serialize_datetime(self, value: datetime | None) -> str | None:
@@ -430,6 +621,24 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             return None
         return str(value)
 
+    def _resolve_root_session_id(
+        self,
+        *,
+        session_id: str,
+        session_kind: SessionKind,
+        stored_root_session_id: object,
+    ) -> str:
+        """Resolve a compatible root session ID for new and old SQLite rows."""
+
+        resolved = self._nullable_text(stored_root_session_id)
+        if resolved is not None and resolved.strip():
+            return resolved
+
+        # Backward compatibility for v0.2.x rows written before root_session_id existed.
+        if session_kind == SessionKind.ANALYSIS:
+            return session_id
+        return session_id
+
     def _normalize_session_id(self, session_id: str) -> str:
         """Normalize and validate a session ID lookup key."""
 
@@ -437,6 +646,13 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
         if not normalized:
             raise ValueError("session_id must not be blank.")
         return normalized
+
+    def _normalize_positive_limit(self, limit: int) -> int:
+        """Normalize list limits used by history queries."""
+
+        if limit <= 0:
+            raise ValueError("limit must be positive.")
+        return limit
 
     def _to_json(self, value: object) -> str:
         """Serialize JSON payloads with UTF-8-safe text preservation."""

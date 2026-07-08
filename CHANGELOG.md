@@ -12,6 +12,26 @@
 
 暂无已确认条目。
 
+## [0.3.0] - 2026-07-08
+
+### Added
+
+- 新增面向 `v0.3.0` 的 idea thread 聚合能力：会话记录、结构化快照、API 响应与本地 `SQLite` 均补充 `root_session_id`，用于将 `analysis / follow_up_refinement / full_plan_composed` 串联为同一条想法链路。
+- 新增本地历史查询能力：提供 `GET /api/v1/sessions`、`GET /api/v1/sessions/{session_id}`、`GET /api/v1/threads`、`GET /api/v1/threads/{root_session_id}`，支持查看最近 session、单个详情与 thread 链路。
+- 新增 `/app` 历史导航界面：包括 recent sessions、current thread、历史详情加载，以及从任意允许继续的历史节点直接发起 follow-up 的入口。
+- 新增 Feishu 归档 thread context：归档 payload 支持 `root_session_id / root_archive_url`，归档正文可展示根会话、父节点与当前节点在线程中的角色。
+
+### Changed
+
+- 历史记录能力继续保持显式导航边界，而不是自动把历史内容 silent 注入下一轮 prompt。
+- follow-up 现可从当前结果或任意允许继续的历史节点显式发起，但仍保持 bounded refinement 与用户确认后再合成完整方案的交互模型。
+- 前端历史按钮、局部完善结果区与归档展示文案进一步统一为中英双语，便于在历史/结果混合场景下阅读与操作。
+
+### Fixed
+
+- 修复本地 fake LLM 在 follow-up 场景中对 prompt 形态判断不稳定的问题，避免把 follow-up 请求误判回根分析链路。
+- 修复归档链路在 Windows 环境下的中文渲染与线程上下文传递细节，保证飞书文档正文可稳定展示中文与 thread metadata。
+
 ## [0.2.5] - 2026-07-06
 
 ### Added

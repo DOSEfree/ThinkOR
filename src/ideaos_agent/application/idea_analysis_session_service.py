@@ -82,6 +82,7 @@ class IdeaAnalysisSessionService:
 
         return IdeaAnalysisResponse(
             session_id=session_id,
+            root_session_id=session_id,
             session_kind=SessionKind.ANALYSIS,
             parent_session_id=None,
             archive_status=final_record.archive_status,
@@ -106,6 +107,7 @@ class IdeaAnalysisSessionService:
 
         return SessionRecord(
             session_id=session_id,
+            root_session_id=session_id,
             parent_session_id=None,
             session_kind=SessionKind.ANALYSIS,
             original_content=payload.content,
@@ -132,6 +134,7 @@ class IdeaAnalysisSessionService:
 
         return SessionSnapshot(
             session_id=session_record.session_id,
+            root_session_id=session_record.session_id,
             parent_session_id=None,
             session_kind=SessionKind.ANALYSIS,
             archive_title=llm_output.archive_title,
@@ -159,6 +162,8 @@ class IdeaAnalysisSessionService:
 
         return SessionArchivePayload(
             session_id=session_record.session_id,
+            root_session_id=session_record.root_session_id,
+            root_archive_url=session_record.archive_url,
             parent_session_id=None,
             parent_archive_url=None,
             session_kind=SessionKind.ANALYSIS,

@@ -45,6 +45,23 @@ class InMemoryArchiveStore:
     def get_session_record(self, session_id: str) -> SessionRecord | None:
         return self.records.get(session_id)
 
+    def list_session_records(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionRecord]:
+        items = list(self.records.values())
+        if root_session_id is not None:
+            items = [item for item in items if item.root_session_id == root_session_id]
+        if session_kind is not None:
+            items = [item for item in items if item.session_kind == session_kind]
+        items.sort(key=lambda item: item.updated_at, reverse=True)
+        if limit is not None:
+            items = items[:limit]
+        return items
+
 
 class InMemorySnapshotStore:
     """Combined snapshot store for follow-up tests."""
@@ -62,6 +79,23 @@ class InMemorySnapshotStore:
 
     def get_session_snapshot(self, session_id: str) -> SessionSnapshot | None:
         return self.snapshots.get(session_id)
+
+    def list_session_snapshots(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionSnapshot]:
+        items = list(self.snapshots.values())
+        if root_session_id is not None:
+            items = [item for item in items if item.root_session_id == root_session_id]
+        if session_kind is not None:
+            items = [item for item in items if item.session_kind == session_kind]
+        items.sort(key=lambda item: item.updated_at, reverse=True)
+        if limit is not None:
+            items = items[:limit]
+        return items
 
 
 class FakeSessionArchiver:
@@ -87,6 +121,7 @@ def seed_parent(snapshot_store: InMemorySnapshotStore, archive_store: InMemoryAr
     snapshot_store.save_session_snapshot(
         SessionSnapshot(
             session_id="sess_root",
+            root_session_id="sess_root",
             parent_session_id=None,
             session_kind=SessionKind.ANALYSIS,
             archive_title="独立开发者产品验证工具",
@@ -113,6 +148,7 @@ def seed_parent(snapshot_store: InMemorySnapshotStore, archive_store: InMemoryAr
     archive_store.save_session_record(
         SessionRecord(
             session_id="sess_root",
+            root_session_id="sess_root",
             parent_session_id=None,
             session_kind=SessionKind.ANALYSIS,
             original_content="我想做一个帮助独立开发者验证产品想法的工具。",
@@ -186,19 +222,26 @@ def test_follow_up_refine_creates_new_session_and_snapshot() -> None:
     )
 
     assert result.session_id.startswith("sess_")
+    assert result.root_session_id == "sess_root"
     assert result.parent_session_id == "sess_root"
     assert result.archive_status == ArchiveStatus.SUCCEEDED
     persisted_record = archive_store.get_session_record(result.session_id)
     assert persisted_record is not None
+    assert persisted_record.root_session_id == "sess_root"
     assert persisted_record.session_kind == SessionKind.FOLLOW_UP_REFINEMENT
     persisted_snapshot = snapshot_store.get_session_snapshot(result.session_id)
     assert persisted_snapshot is not None
+    assert persisted_snapshot.root_session_id == "sess_root"
     assert persisted_snapshot.refinement_result is not None
     assert len(archiver.calls) == 1
+    assert archiver.calls[0].root_session_id == "sess_root"
+    assert archiver.calls[0].root_archive_url == "https://feishu.example.com/docx/sess_root"
+    assert archiver.calls[0].parent_session_id == "sess_root"
+    assert archiver.calls[0].parent_archive_url == "https://feishu.example.com/docx/sess_root"
 
 
 def test_follow_up_compose_full_plan_applies_section_updates() -> None:
-    service, archive_store, snapshot_store, _archiver = build_service(
+    service, archive_store, snapshot_store, archiver = build_service(
         [
             {
                 "archive_title": "独立开发者产品验证工具优化",
@@ -237,13 +280,24 @@ def test_follow_up_compose_full_plan_applies_section_updates() -> None:
     )
 
     assert composed.session_id.startswith("sess_")
+    assert composed.root_session_id == "sess_root"
     assert composed.parent_session_id == refine_result.session_id
     assert composed.session_kind == SessionKind.FULL_PLAN_COMPOSED
     assert composed.analysis is not None
     assert composed.analysis.market == "目标用户聚焦为缺少研究资源的独立开发者。"
     persisted_record = archive_store.get_session_record(composed.session_id)
     assert persisted_record is not None
+    assert persisted_record.root_session_id == "sess_root"
     assert persisted_record.session_kind == SessionKind.FULL_PLAN_COMPOSED
     persisted_snapshot = snapshot_store.get_session_snapshot(composed.session_id)
     assert persisted_snapshot is not None
+    assert persisted_snapshot.root_session_id == "sess_root"
     assert persisted_snapshot.analysis is not None
+    assert len(archiver.calls) == 2
+    assert archiver.calls[1].root_session_id == "sess_root"
+    assert archiver.calls[1].root_archive_url == "https://feishu.example.com/docx/sess_root"
+    assert archiver.calls[1].parent_session_id == refine_result.session_id
+    assert (
+        archiver.calls[1].parent_archive_url
+        == f"https://feishu.example.com/docx/{refine_result.session_id}"
+    )

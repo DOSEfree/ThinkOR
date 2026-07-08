@@ -43,6 +43,42 @@
       </form>
     </section>
 
+    <section class="history-shell" id="history-shell" aria-labelledby="history-panel-title">
+      <div class="section-head section-head-single">
+        <h2 class="section-title" id="history-panel-title">LOCAL HISTORY / 本地历史</h2>
+      </div>
+      <div class="history-grid">
+        <section class="history-panel" aria-labelledby="history-session-list-title">
+          <div class="history-panel-head">
+            <div>
+              <div class="assumptions-label" id="history-session-list-title">RECENT SESSIONS / 最近会话</div>
+              <p class="history-panel-copy">
+                Completed sessions saved in local SQLite will appear here for review and follow-up continuation.
+              </p>
+            </div>
+            <button class="history-refresh" id="history-refresh" type="button">刷新 / REFRESH</button>
+          </div>
+          <div class="history-panel-body" id="history-session-list">
+            <p class="history-empty">Loading recent sessions...</p>
+          </div>
+        </section>
+
+        <section class="history-panel" aria-labelledby="history-thread-title">
+          <div class="history-panel-head">
+            <div>
+              <div class="assumptions-label" id="history-thread-title">CURRENT THREAD / 当前链路</div>
+              <p class="history-panel-copy">
+                Select one completed session to inspect its parent-child chain and continue from that specific node.
+              </p>
+            </div>
+          </div>
+          <div class="history-panel-body" id="history-thread-content">
+            <p class="history-empty">Select a session to inspect its thread.</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section class="result-shell" id="result-shell" aria-live="polite">
       <div class="result-placeholder" id="result-placeholder">
         <div class="section-head">

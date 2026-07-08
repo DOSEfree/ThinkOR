@@ -3,6 +3,7 @@
 from ideaos_agent.application.follow_up_session_service import FollowUpSessionService
 from ideaos_agent.application.idea_analysis_service import IdeaAnalysisService
 from ideaos_agent.application.idea_analysis_session_service import IdeaAnalysisSessionService
+from ideaos_agent.application.session_history_service import SessionHistoryService
 from ideaos_agent.config import AppSettings, get_settings
 from ideaos_agent.domain.archive import SessionArchiver, SessionArchiveStore
 from ideaos_agent.domain.session import SessionSnapshotStore
@@ -96,4 +97,14 @@ def get_follow_up_session_service() -> FollowUpSessionService:
         session_archive_store=get_session_archive_store(settings),
         session_snapshot_store=get_session_snapshot_store(settings),
         session_archiver=get_session_archiver(settings),
+    )
+
+
+def get_session_history_service() -> SessionHistoryService:
+    """Create the read-only history service for v0.3.0 queries."""
+
+    settings = get_app_settings()
+    return SessionHistoryService(
+        session_archive_store=get_session_archive_store(settings),
+        session_snapshot_store=get_session_snapshot_store(settings),
     )

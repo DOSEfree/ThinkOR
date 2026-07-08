@@ -34,6 +34,9 @@ def test_app_page_renders_html_interface() -> None:
     assert 'id="idea-content"' in response.text
     assert "/static/swiss.css" in response.text
     assert "/static/app.js" in response.text
+    assert 'id="history-session-list"' in response.text
+    assert 'id="history-thread-content"' in response.text
+    assert 'id="history-refresh"' in response.text
     assert "归档状态" in response.text
     assert "follow-up 局部完善结果，以及当前会话的归档状态。" in response.text
 
@@ -65,6 +68,13 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert "data-follow-up-composer" in response.text
     assert "let isSubmitting = false" in response.text
     assert "function setActionButtonsDisabled(isDisabled)" in response.text
+    assert "async function loadRecentSessions()" in response.text
+    assert "async function openHistorySession(sessionId, options = {})" in response.text
+    assert "data-action='continue-history-follow-up'" in response.text
+    assert "ROOT SESSION" in response.text
+    assert "打开详情 / OPEN DETAIL" in response.text
+    assert "继续完善 / CONTINUE FOLLOW-UP" in response.text
+    assert "从这里继续 / CONTINUE HERE" in response.text
 
 
 def test_idea_analysis_endpoint_returns_fake_response(

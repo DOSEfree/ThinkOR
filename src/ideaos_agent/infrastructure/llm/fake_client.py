@@ -11,7 +11,7 @@ class FakeLlmClient(LlmClient):
     def generate_text(self, *, system_prompt: str, user_prompt: str) -> str:
         del system_prompt
 
-        if "refinement_result" in user_prompt and "Parent full analysis:" in user_prompt:
+        if _looks_like_follow_up_prompt(user_prompt):
             return self._generate_follow_up_response(user_prompt)
 
         return self._generate_analysis_response(user_prompt)
@@ -78,14 +78,10 @@ class FakeLlmClient(LlmClient):
         )
 
     def _generate_follow_up_response(self, user_prompt: str) -> str:
-        question = _extract_line_value(user_prompt, "Follow-up question:")
-        clarification_block = _extract_section(
-            user_prompt,
-            "Existing clarification answers:",
-            "Requirements:",
-        )
-        has_clarifications = clarification_block.strip() not in {"none", ""}
-        needs_clarification = not has_clarifications and len(question) < 18
+        question = _extract_follow_up_question(user_prompt)
+        clarification_block = _extract_follow_up_clarifications(user_prompt)
+        has_clarifications = clarification_block.strip() not in {"none", "无", ""}
+        needs_clarification = not has_clarifications and len(question) < 8
 
         if needs_clarification:
             return json.dumps(
@@ -182,3 +178,45 @@ def _extract_line_value(text: str, prefix: str) -> str:
         if line.startswith(prefix):
             return line.removeprefix(prefix).strip()
     return ""
+
+
+def _looks_like_follow_up_prompt(text: str) -> bool:
+    """Detect the current follow-up prompt shape using stable markers."""
+
+    return (
+        "session_kind:" in text
+        and "refinement_result" in text
+        and "follow-up" in text
+    )
+
+
+def _extract_follow_up_question(text: str) -> str:
+    """Extract the current follow-up question from the latest prompt shape."""
+
+    question = _extract_line_value(text, "Follow-up question:")
+    if question:
+        return question
+
+    return _extract_section(
+        text,
+        "【当前这次 follow-up 问题】",
+        "【当前这次 follow-up 已有澄清回答】",
+    )
+
+
+def _extract_follow_up_clarifications(text: str) -> str:
+    """Extract follow-up clarification answers from old or new prompt shapes."""
+
+    clarification_block = _extract_section(
+        text,
+        "Existing clarification answers:",
+        "Requirements:",
+    )
+    if clarification_block:
+        return clarification_block
+
+    return _extract_section(
+        text,
+        "【当前这次 follow-up 已有澄清回答】",
+        "【任务要求】",
+    )

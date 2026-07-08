@@ -44,6 +44,8 @@ def render_feishu_archive_xml(
         f"<p>{_escape_text(_session_intro_copy(payload.session_kind))}</p>",
         "<h2>Session Info</h2>",
         _render_session_info(payload, generated_at),
+        "<h2>Thread Context</h2>",
+        _render_thread_context(payload),
         "<h2>Original Idea</h2>",
         _render_paragraph(payload.original_content),
         "<h2>Input Echo</h2>",
@@ -138,6 +140,29 @@ def _render_session_info(payload: SessionArchivePayload, generated_at: datetime)
         f"<li><b>Completed At:</b> {_escape_text(_format_datetime(payload.completed_at))}</li>",
         f"<li><b>Archived At:</b> {_escape_text(_format_datetime(generated_at))}</li>",
     ]
+    return f"<ul>{''.join(items)}</ul>"
+
+
+def _render_thread_context(payload: SessionArchivePayload) -> str:
+    """Render thread-level context for human archive readers."""
+
+    items = [
+        f"<li><b>Root Session ID:</b> {_escape_text(payload.root_session_id)}</li>",
+        (
+            "<li><b>Thread Role:</b> "
+            f"{_escape_text(_describe_thread_role(payload))}</li>"
+        ),
+    ]
+    if payload.root_archive_url:
+        items.append(
+            "<li><b>Root Archive URL:</b> "
+            f"{_escape_text(payload.root_archive_url)}</li>"
+        )
+    if payload.parent_session_id is not None:
+        items.append(
+            "<li><b>Continues From:</b> "
+            f"{_escape_text(payload.parent_session_id)}</li>"
+        )
     return f"<ul>{''.join(items)}</ul>"
 
 
@@ -294,3 +319,13 @@ def _build_fallback_candidates(payload: SessionArchivePayload) -> list[str]:
     if payload.analysis is not None:
         candidates.insert(0, payload.analysis.summary)
     return candidates
+
+
+def _describe_thread_role(payload: SessionArchivePayload) -> str:
+    """Return a reader-friendly thread role label for the current session."""
+
+    if payload.session_id == payload.root_session_id:
+        return "Root analysis"
+    if payload.session_kind == SessionKind.FOLLOW_UP_REFINEMENT:
+        return "Follow-up refinement"
+    return "Composed full plan"

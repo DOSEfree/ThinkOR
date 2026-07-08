@@ -38,6 +38,10 @@ class SessionSnapshot(BaseModel):
     """Structured local snapshot used for follow-up reasoning and replay."""
 
     session_id: str = Field(min_length=1, description="Stable session identifier.")
+    root_session_id: str = Field(
+        min_length=1,
+        description="Stable root session ID for the whole idea thread.",
+    )
     parent_session_id: str | None = Field(
         default=None,
         description="Immediate parent session, if this session continues another one.",
@@ -89,6 +93,7 @@ class SessionSnapshot(BaseModel):
 
     @field_validator(
         "session_id",
+        "root_session_id",
         "parent_session_id",
         "archive_title",
         "original_content",
@@ -111,6 +116,8 @@ class SessionSnapshot(BaseModel):
         """Keep snapshot payload shape aligned with the session kind."""
 
         if self.session_kind == SessionKind.ANALYSIS:
+            if self.root_session_id != self.session_id:
+                raise ValueError("Analysis snapshots must use session_id as root_session_id.")
             if self.parent_session_id is not None:
                 raise ValueError("Analysis snapshots must not have parent_session_id.")
             if self.analysis is None:
@@ -151,3 +158,12 @@ class SessionSnapshotStore(Protocol):
 
     def get_session_snapshot(self, session_id: str) -> SessionSnapshot | None:
         """Fetch a structured session snapshot by session ID."""
+
+    def list_session_snapshots(
+        self,
+        *,
+        limit: int | None = None,
+        root_session_id: str | None = None,
+        session_kind: SessionKind | None = None,
+    ) -> list[SessionSnapshot]:
+        """List structured session snapshots for history and thread queries."""

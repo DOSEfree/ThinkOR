@@ -71,6 +71,7 @@ class FollowUpSessionService:
 
         session_record = SessionRecord(
             session_id=session_id,
+            root_session_id=parent_snapshot.root_session_id,
             parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
             original_content=parent_snapshot.original_content,
@@ -89,6 +90,7 @@ class FollowUpSessionService:
 
             snapshot = SessionSnapshot(
                 session_id=session_id,
+                root_session_id=parent_snapshot.root_session_id,
                 parent_session_id=parent_snapshot.session_id,
                 session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
                 archive_title=llm_output.archive_title,
@@ -110,8 +112,15 @@ class FollowUpSessionService:
             parent_record = self._session_archive_store.get_session_record(
                 parent_snapshot.session_id
             )
+            root_record = self._session_archive_store.get_session_record(
+                parent_snapshot.root_session_id
+            )
             archive_payload = SessionArchivePayload(
                 session_id=session_id,
+                root_session_id=parent_snapshot.root_session_id,
+                root_archive_url=(
+                    root_record.archive_url if root_record is not None else None
+                ),
                 parent_session_id=parent_snapshot.session_id,
                 parent_archive_url=(
                     parent_record.archive_url if parent_record is not None else None
@@ -142,6 +151,7 @@ class FollowUpSessionService:
 
         return FollowUpResponse(
             session_id=session_id,
+            root_session_id=parent_snapshot.root_session_id,
             parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
             archive_status=final_record.archive_status,
@@ -175,6 +185,7 @@ class FollowUpSessionService:
 
         session_record = SessionRecord(
             session_id=session_id,
+            root_session_id=refinement_snapshot.root_session_id,
             parent_session_id=refinement_snapshot.session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             original_content=parent_snapshot.original_content,
@@ -188,6 +199,7 @@ class FollowUpSessionService:
 
         snapshot = SessionSnapshot(
             session_id=session_id,
+            root_session_id=refinement_snapshot.root_session_id,
             parent_session_id=refinement_snapshot.session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             archive_title=refinement_snapshot.archive_title,
@@ -207,8 +219,15 @@ class FollowUpSessionService:
         refinement_record = self._session_archive_store.get_session_record(
             refinement_snapshot.session_id
         )
+        root_record = self._session_archive_store.get_session_record(
+            refinement_snapshot.root_session_id
+        )
         archive_payload = SessionArchivePayload(
             session_id=session_id,
+            root_session_id=refinement_snapshot.root_session_id,
+            root_archive_url=(
+                root_record.archive_url if root_record is not None else None
+            ),
             parent_session_id=refinement_snapshot.session_id,
             parent_archive_url=(
                 refinement_record.archive_url if refinement_record is not None else None
@@ -239,6 +258,7 @@ class FollowUpSessionService:
 
         return ComposedPlanResponse(
             session_id=session_id,
+            root_session_id=refinement_snapshot.root_session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             parent_session_id=refinement_snapshot.session_id,
             archive_status=final_record.archive_status,

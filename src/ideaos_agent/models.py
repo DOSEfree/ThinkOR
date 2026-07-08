@@ -1,5 +1,7 @@
 """Typed API-facing models for IdeaOS-Agent requests and responses."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ideaos_agent.domain.analysis import IdeaAnalysis, RefinementResult
@@ -115,6 +117,10 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
     """Shared response fields for full-analysis-shaped API responses."""
 
     session_id: str = Field(min_length=1, description="Stable session ID.")
+    root_session_id: str = Field(
+        min_length=1,
+        description="Stable root session ID for the whole idea thread.",
+    )
     session_kind: SessionKind = Field(description="Session kind for the current response.")
     parent_session_id: str | None = Field(
         default=None,
@@ -126,7 +132,7 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
         description="Archive URL after a successful archive attempt.",
     )
 
-    @field_validator("session_id", "parent_session_id", "archive_url")
+    @field_validator("session_id", "root_session_id", "parent_session_id", "archive_url")
     @classmethod
     def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
         """Reject blank-only optional text values."""
@@ -165,6 +171,8 @@ class IdeaAnalysisResponse(BaseAnalysisResponse):
 
         if self.session_kind != SessionKind.ANALYSIS:
             raise ValueError("IdeaAnalysisResponse must use session_kind=analysis.")
+        if self.root_session_id != self.session_id:
+            raise ValueError("Root analysis responses must use session_id as root_session_id.")
         if self.parent_session_id is not None:
             raise ValueError("Root analysis responses must not include parent_session_id.")
         return self
@@ -257,6 +265,10 @@ class FollowUpResponse(FollowUpLlmOutput):
     """API response for one follow-up refinement session."""
 
     session_id: str = Field(min_length=1, description="Current follow-up session ID.")
+    root_session_id: str = Field(
+        min_length=1,
+        description="Stable root session ID inherited from the idea thread.",
+    )
     parent_session_id: str = Field(min_length=1, description="Parent session ID.")
     session_kind: SessionKind = Field(
         default=SessionKind.FOLLOW_UP_REFINEMENT,
@@ -268,7 +280,7 @@ class FollowUpResponse(FollowUpLlmOutput):
         description="Archive URL after a successful archive attempt.",
     )
 
-    @field_validator("session_id", "parent_session_id", "archive_url")
+    @field_validator("session_id", "root_session_id", "parent_session_id", "archive_url")
     @classmethod
     def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
         """Reject blank-only optional text values."""
@@ -336,3 +348,174 @@ class ComposedPlanResponse(BaseAnalysisResponse):
         if self.analysis is None:
             raise ValueError("ComposedPlanResponse must include analysis.")
         return self
+
+
+class SessionHistoryItem(BaseModel):
+    """Compact history item used in session and thread list responses."""
+
+    session_id: str = Field(min_length=1, description="Current session ID.")
+    root_session_id: str = Field(min_length=1, description="Root session ID for the thread.")
+    parent_session_id: str | None = Field(
+        default=None,
+        description="Immediate parent session ID, if any.",
+    )
+    session_kind: SessionKind = Field(description="Kind of session.")
+    archive_title: str = Field(min_length=1, description="Semantic archive title.")
+    archive_status: ArchiveStatus = Field(description="Current archive status.")
+    archive_url: str | None = Field(
+        default=None,
+        description="Archive URL after a successful archive attempt.",
+    )
+    created_at: datetime = Field(description="Creation time of the session.")
+    updated_at: datetime = Field(description="Latest update time of the session.")
+    can_continue_follow_up: bool = Field(
+        description="Whether this node can be explicitly used as a follow-up parent.",
+    )
+
+    @field_validator(
+        "session_id",
+        "root_session_id",
+        "parent_session_id",
+        "archive_title",
+        "archive_url",
+    )
+    @classmethod
+    def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only optional text values."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Session history text fields must not be blank.")
+        return normalized
+
+
+class SessionListResponse(BaseModel):
+    """Response for session history list queries."""
+
+    items: list[SessionHistoryItem] = Field(default_factory=list, description="History items.")
+
+
+class SessionThreadSummary(BaseModel):
+    """Compact summary for one idea thread."""
+
+    root_session_id: str = Field(min_length=1, description="Root session ID for the thread.")
+    root_archive_title: str = Field(min_length=1, description="Semantic title of the root idea.")
+    latest_session_id: str = Field(min_length=1, description="Latest session ID in the thread.")
+    latest_session_kind: SessionKind = Field(description="Latest session kind in the thread.")
+    latest_archive_status: ArchiveStatus = Field(description="Latest archive status in the thread.")
+    latest_updated_at: datetime = Field(description="Latest update time in the thread.")
+    session_count: int = Field(ge=1, description="Number of sessions currently in the thread.")
+
+    @field_validator("root_session_id", "root_archive_title", "latest_session_id")
+    @classmethod
+    def validate_required_text_not_blank(cls, value: str) -> str:
+        """Reject blank-only required text fields."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Session thread summary text fields must not be blank.")
+        return normalized
+
+
+class ThreadListResponse(BaseModel):
+    """Response for thread summary list queries."""
+
+    items: list[SessionThreadSummary] = Field(
+        default_factory=list,
+        description="Thread summaries.",
+    )
+
+
+class SessionDetailResponse(BaseModel):
+    """Detailed history response for one session."""
+
+    session_id: str = Field(min_length=1, description="Current session ID.")
+    root_session_id: str = Field(min_length=1, description="Root session ID for the thread.")
+    parent_session_id: str | None = Field(
+        default=None,
+        description="Immediate parent session ID, if any.",
+    )
+    session_kind: SessionKind = Field(description="Kind of session.")
+    archive_status: ArchiveStatus = Field(description="Current archive status.")
+    archive_url: str | None = Field(
+        default=None,
+        description="Archive URL after a successful archive attempt.",
+    )
+    archive_title: str = Field(min_length=1, description="Semantic archive title.")
+    original_content: str = Field(min_length=1, description="Root/original idea content.")
+    input_echo: str = Field(min_length=1, description="Faithful current input echo.")
+    clarifications: list[ClarificationAnswer] = Field(
+        default_factory=list,
+        description="Clarifications used in the session.",
+    )
+    assumptions: list[str] = Field(default_factory=list, description="System assumptions.")
+    open_questions: list[str] = Field(default_factory=list, description="Open questions.")
+    follow_up_question: str | None = Field(
+        default=None,
+        description="Follow-up question when this is not a root analysis.",
+    )
+    analysis: IdeaAnalysis | None = Field(
+        default=None,
+        description="Full analysis when available.",
+    )
+    refinement_result: RefinementResult | None = Field(
+        default=None,
+        description="Refinement result when available.",
+    )
+    created_at: datetime = Field(description="Creation time of the session.")
+    completed_at: datetime = Field(description="Completion time of the session.")
+    updated_at: datetime = Field(description="Latest update time of the session.")
+    archived_at: datetime | None = Field(
+        default=None,
+        description="Archive attempt completion time, if any.",
+    )
+    can_continue_follow_up: bool = Field(
+        description="Whether this node can be explicitly used as a follow-up parent.",
+    )
+    child_session_ids: list[str] = Field(
+        default_factory=list,
+        description="Immediate children that continue from this session.",
+    )
+
+    @field_validator(
+        "session_id",
+        "root_session_id",
+        "parent_session_id",
+        "archive_url",
+        "archive_title",
+        "original_content",
+        "input_echo",
+        "follow_up_question",
+    )
+    @classmethod
+    def validate_detail_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only optional text values."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Session detail text fields must not be blank.")
+        return normalized
+
+
+class SessionThreadResponse(BaseModel):
+    """Detailed response for one idea thread."""
+
+    root_session_id: str = Field(min_length=1, description="Root session ID for the thread.")
+    items: list[SessionHistoryItem] = Field(
+        default_factory=list,
+        description="Ordered sessions in the thread.",
+    )
+
+    @field_validator("root_session_id")
+    @classmethod
+    def validate_root_not_blank(cls, value: str) -> str:
+        """Reject blank-only root session identifiers."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("root_session_id must not be blank.")
+        return normalized

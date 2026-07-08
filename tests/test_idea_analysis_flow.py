@@ -143,7 +143,80 @@ def test_idea_analysis_persists_session_record_to_sqlite(
 
     assert persisted_record is not None
     assert persisted_record.archive_status == ArchiveStatus.SUCCEEDED
+    assert persisted_record.root_session_id == body["session_id"]
     assert persisted_record.archive_url == f"https://feishu.example.com/docx/{body['session_id']}"
     assert persisted_record.clarification_count == 1
     assert persisted_record.completed_at is not None
     assert persisted_record.archived_at is not None
+
+
+def test_session_history_endpoints_return_thread_views(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
+    monkeypatch.setenv("IDEAOS_ARCHIVE_DB_PATH", str(tmp_path / "ideaos_agent.db"))
+    client = TestClient(app)
+
+    analysis_response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "我想做一个帮助独立开发者验证产品想法的工具。",
+            "clarifications": [
+                {
+                    "question": "你最想帮用户验证什么？",
+                    "answer": "我最想先帮助他们判断想法值不值得继续做。",
+                }
+            ],
+        },
+    )
+    assert analysis_response.status_code == 200
+    analysis_body = analysis_response.json()
+
+    refine_response = client.post(
+        "/api/v1/follow-up/refine",
+        json={
+            "parent_session_id": analysis_body["session_id"],
+            "question": "我想进一步收窄目标用户。",
+            "clarifications": [],
+        },
+    )
+    assert refine_response.status_code == 200
+    refine_body = refine_response.json()
+
+    composed_response = client.post(
+        "/api/v1/follow-up/compose-full-plan",
+        json={"parent_session_id": refine_body["session_id"]},
+    )
+    assert composed_response.status_code == 200
+    composed_body = composed_response.json()
+
+    sessions_response = client.get("/api/v1/sessions")
+    assert sessions_response.status_code == 200
+    sessions_body = sessions_response.json()
+    assert len(sessions_body["items"]) >= 3
+    assert sessions_body["items"][0]["root_session_id"] == analysis_body["session_id"]
+
+    detail_response = client.get(f"/api/v1/sessions/{analysis_body['session_id']}")
+    assert detail_response.status_code == 200
+    detail_body = detail_response.json()
+    assert detail_body["session_id"] == analysis_body["session_id"]
+    assert detail_body["can_continue_follow_up"] is True
+    assert refine_body["session_id"] in detail_body["child_session_ids"]
+
+    threads_response = client.get("/api/v1/threads")
+    assert threads_response.status_code == 200
+    threads_body = threads_response.json()
+    assert len(threads_body["items"]) >= 1
+    assert threads_body["items"][0]["root_session_id"] == analysis_body["session_id"]
+
+    thread_response = client.get(f"/api/v1/threads/{analysis_body['session_id']}")
+    assert thread_response.status_code == 200
+    thread_body = thread_response.json()
+    assert thread_body["root_session_id"] == analysis_body["session_id"]
+    assert [item["session_id"] for item in thread_body["items"]] == [
+        analysis_body["session_id"],
+        refine_body["session_id"],
+        composed_body["session_id"],
+    ]

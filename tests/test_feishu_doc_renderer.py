@@ -12,6 +12,8 @@ from ideaos_agent.infrastructure.archive.feishu_doc_renderer import (
 def build_payload() -> SessionArchivePayload:
     return SessionArchivePayload(
         session_id="sess_archive",
+        root_session_id="sess_archive",
+        root_archive_url="https://feishu.example.com/docx/sess_archive",
         parent_session_id=None,
         parent_archive_url=None,
         session_kind=SessionKind.ANALYSIS,
@@ -66,4 +68,33 @@ def test_render_feishu_archive_xml_contains_core_sections() -> None:
     assert "<h2>Clarification Record</h2>" in xml
     assert "<h2>Analysis</h2>" in xml
     assert "<h3>Summary</h3>" in xml
+    assert "<h2>Thread Context</h2>" in xml
+    assert "<b>Root Session ID:</b> sess_archive" in xml
+    assert "<b>Thread Role:</b> Root analysis" in xml
+    assert "<b>Root Archive URL:</b> https://feishu.example.com/docx/sess_archive" in xml
     assert "先判断想法值不值得继续做。" in xml
+
+
+def test_render_feishu_archive_xml_shows_follow_up_thread_context() -> None:
+    payload = build_payload().model_copy(
+        update={
+            "session_id": "sess_follow_up",
+            "root_session_id": "sess_archive",
+            "root_archive_url": "https://feishu.example.com/docx/sess_archive",
+            "parent_session_id": "sess_archive",
+            "parent_archive_url": "https://feishu.example.com/docx/sess_archive",
+            "session_kind": SessionKind.FOLLOW_UP_REFINEMENT,
+            "follow_up_question": "我想进一步收窄目标用户。",
+            "analysis": None,
+        }
+    )
+
+    xml = render_feishu_archive_xml(
+        payload,
+        generated_at=datetime(2026, 7, 5, 10, 6, tzinfo=UTC),
+    )
+
+    assert "<b>Root Session ID:</b> sess_archive" in xml
+    assert "<b>Thread Role:</b> Follow-up refinement" in xml
+    assert "<b>Continues From:</b> sess_archive" in xml
+    assert "<h2>Parent Session</h2>" in xml
