@@ -1,6 +1,6 @@
 """Application-layer orchestration for v0.2.5 follow-up refinement flows."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ideaos_agent.application.idea_analysis_session_service import resolve_session_id
 from ideaos_agent.config import AppSettings
@@ -54,20 +54,22 @@ class FollowUpSessionService:
     def refine(self, payload: FollowUpInput) -> FollowUpResponse:
         """Generate one bounded follow-up refinement result."""
 
+        self._prune_expired_drafts()
         parent_snapshot = self._require_parent_snapshot(payload.parent_session_id)
         if parent_snapshot.analysis is None:
             raise SessionStateError(
                 "Follow-up parent session must contain a full analysis snapshot."
             )
 
-        session_id = resolve_session_id(payload.session_id)
+        reusable_draft = self._find_active_draft(parent_snapshot.session_id)
+        requested_session_id = payload.session_id
+        if requested_session_id is None and reusable_draft is not None:
+            requested_session_id = reusable_draft.session_id
+
+        session_id = resolve_session_id(requested_session_id)
         llm_output = self._generate_refinement_output(parent_snapshot, payload)
         archive_status = determine_follow_up_archive_status(llm_output)
-        completed_at = (
-            datetime.now(UTC)
-            if archive_status != ArchiveStatus.NOT_TRIGGERED
-            else None
-        )
+        completed_at = datetime.now(UTC) if llm_output.needs_clarification is False else None
 
         session_record = SessionRecord(
             session_id=session_id,
@@ -84,9 +86,11 @@ class FollowUpSessionService:
         persisted_record = self._session_archive_store.save_session_record(session_record)
 
         final_record = persisted_record
-        if persisted_record.archive_status == ArchiveStatus.PENDING:
-            if llm_output.refinement_result is None or persisted_record.completed_at is None:
-                raise ValueError("Completed refinement sessions require refinement_result.")
+        if llm_output.refinement_result is None:
+            self._session_snapshot_store.delete_session_snapshot(session_id)
+        else:
+            if persisted_record.completed_at is None:
+                raise ValueError("Completed refinement sessions require completed_at.")
 
             snapshot = SessionSnapshot(
                 session_id=session_id,
@@ -108,46 +112,7 @@ class FollowUpSessionService:
                 completed_at=persisted_record.completed_at,
                 updated_at=persisted_record.completed_at,
             )
-            persisted_snapshot = self._session_snapshot_store.save_session_snapshot(snapshot)
-            parent_record = self._session_archive_store.get_session_record(
-                parent_snapshot.session_id
-            )
-            root_record = self._session_archive_store.get_session_record(
-                parent_snapshot.root_session_id
-            )
-            archive_payload = SessionArchivePayload(
-                session_id=session_id,
-                root_session_id=parent_snapshot.root_session_id,
-                root_archive_url=(
-                    root_record.archive_url if root_record is not None else None
-                ),
-                parent_session_id=parent_snapshot.session_id,
-                parent_archive_url=(
-                    parent_record.archive_url if parent_record is not None else None
-                ),
-                session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
-                archive_title=persisted_snapshot.archive_title,
-                original_content=persisted_snapshot.original_content,
-                input_echo=persisted_snapshot.input_echo,
-                clarifications=persisted_snapshot.clarifications,
-                assumptions=persisted_snapshot.assumptions,
-                open_questions=persisted_snapshot.open_questions,
-                follow_up_question=persisted_snapshot.follow_up_question,
-                analysis=None,
-                refinement_result=persisted_snapshot.refinement_result,
-                created_at=persisted_snapshot.created_at,
-                completed_at=persisted_snapshot.completed_at,
-            )
-            archive_result = self._try_archive_session(archive_payload)
-            final_record = self._apply_archive_result(persisted_record, archive_result)
-            final_record = self._session_archive_store.save_session_record(final_record)
-            updated_snapshot = persisted_snapshot.model_copy(
-                update={
-                    "archived_at": archive_result.archived_at,
-                    "updated_at": archive_result.archived_at,
-                }
-            )
-            self._session_snapshot_store.save_session_snapshot(updated_snapshot)
+            self._session_snapshot_store.save_session_snapshot(snapshot)
 
         return FollowUpResponse(
             session_id=session_id,
@@ -162,6 +127,7 @@ class FollowUpSessionService:
     def compose_full_plan(self, payload: ComposeFullPlanInput) -> ComposedPlanResponse:
         """Compose a new full analysis by applying one refinement to its parent analysis."""
 
+        self._prune_expired_drafts()
         refinement_snapshot = self._require_snapshot(payload.parent_session_id)
         if refinement_snapshot.session_kind != SessionKind.FOLLOW_UP_REFINEMENT:
             raise SessionStateError("Compose full plan requires a follow-up refinement session.")
@@ -186,7 +152,7 @@ class FollowUpSessionService:
         session_record = SessionRecord(
             session_id=session_id,
             root_session_id=refinement_snapshot.root_session_id,
-            parent_session_id=refinement_snapshot.session_id,
+            parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             original_content=parent_snapshot.original_content,
             input_echo=refinement_snapshot.input_echo,
@@ -200,7 +166,7 @@ class FollowUpSessionService:
         snapshot = SessionSnapshot(
             session_id=session_id,
             root_session_id=refinement_snapshot.root_session_id,
-            parent_session_id=refinement_snapshot.session_id,
+            parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             archive_title=refinement_snapshot.archive_title,
             original_content=parent_snapshot.original_content,
@@ -216,9 +182,7 @@ class FollowUpSessionService:
         )
         persisted_snapshot = self._session_snapshot_store.save_session_snapshot(snapshot)
 
-        refinement_record = self._session_archive_store.get_session_record(
-            refinement_snapshot.session_id
-        )
+        parent_record = self._session_archive_store.get_session_record(parent_snapshot.session_id)
         root_record = self._session_archive_store.get_session_record(
             refinement_snapshot.root_session_id
         )
@@ -228,9 +192,9 @@ class FollowUpSessionService:
             root_archive_url=(
                 root_record.archive_url if root_record is not None else None
             ),
-            parent_session_id=refinement_snapshot.session_id,
+            parent_session_id=parent_snapshot.session_id,
             parent_archive_url=(
-                refinement_record.archive_url if refinement_record is not None else None
+                parent_record.archive_url if parent_record is not None else None
             ),
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             archive_title=persisted_snapshot.archive_title,
@@ -255,12 +219,14 @@ class FollowUpSessionService:
             }
         )
         self._session_snapshot_store.save_session_snapshot(updated_snapshot)
+        self._session_snapshot_store.delete_session_snapshot(refinement_snapshot.session_id)
+        self._session_archive_store.delete_session_record(refinement_snapshot.session_id)
 
         return ComposedPlanResponse(
             session_id=session_id,
             root_session_id=refinement_snapshot.root_session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
-            parent_session_id=refinement_snapshot.session_id,
+            parent_session_id=parent_snapshot.session_id,
             archive_status=final_record.archive_status,
             archive_url=final_record.archive_url,
             archive_title=persisted_snapshot.archive_title,
@@ -326,6 +292,51 @@ class FollowUpSessionService:
             raise SessionNotFoundError(f"Session snapshot not found: {session_id}")
         return snapshot
 
+    def _find_active_draft(self, parent_session_id: str) -> SessionSnapshot | None:
+        """Return the latest non-expired draft cached under one formal parent session."""
+
+        candidates = [
+            snapshot
+            for snapshot in self._session_snapshot_store.list_session_snapshots(
+                session_kind=SessionKind.FOLLOW_UP_REFINEMENT
+            )
+            if snapshot.parent_session_id == parent_session_id
+            and snapshot.updated_at >= self._draft_retention_cutoff()
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: item.updated_at, reverse=True)
+        return candidates[0]
+
+    def _prune_expired_drafts(self) -> None:
+        """Delete cached follow-up drafts that exceeded the retention window."""
+
+        cutoff = self._draft_retention_cutoff()
+        expired_session_ids: set[str] = set()
+
+        for record in self._session_archive_store.list_session_records(
+            session_kind=SessionKind.FOLLOW_UP_REFINEMENT
+        ):
+            if record.updated_at < cutoff:
+                expired_session_ids.add(record.session_id)
+
+        for snapshot in self._session_snapshot_store.list_session_snapshots(
+            session_kind=SessionKind.FOLLOW_UP_REFINEMENT
+        ):
+            if snapshot.updated_at < cutoff:
+                expired_session_ids.add(snapshot.session_id)
+
+        for session_id in expired_session_ids:
+            self._session_snapshot_store.delete_session_snapshot(session_id)
+            self._session_archive_store.delete_session_record(session_id)
+
+    def _draft_retention_cutoff(self) -> datetime:
+        """Return the oldest timestamp still kept as a recoverable local draft."""
+
+        return datetime.now(UTC) - timedelta(
+            days=max(self._settings.follow_up_draft_retention_days, 0)
+        )
+
     def _try_archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
         """Archive one completed follow-up/composed session without blocking the main result."""
 
@@ -359,8 +370,7 @@ class FollowUpSessionService:
 
 
 def determine_follow_up_archive_status(llm_output: FollowUpLlmOutput) -> ArchiveStatus:
-    """Map follow-up refinement state to the archive lifecycle state."""
+    """Keep follow-up refinement outputs local until the user confirms compose."""
 
-    if llm_output.needs_clarification:
-        return ArchiveStatus.NOT_TRIGGERED
-    return ArchiveStatus.PENDING
+    del llm_output
+    return ArchiveStatus.NOT_TRIGGERED

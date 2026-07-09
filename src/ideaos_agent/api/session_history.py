@@ -8,9 +8,11 @@ from ideaos_agent.api.dependencies import get_session_history_service
 from ideaos_agent.application.session_history_service import SessionHistoryService
 from ideaos_agent.domain.errors import SessionNotFoundError
 from ideaos_agent.models import (
+    ArchiveSyncResponse,
     SessionDetailResponse,
     SessionListResponse,
     SessionThreadResponse,
+    ThreadDeleteResponse,
     ThreadListResponse,
 )
 
@@ -57,6 +59,15 @@ def list_threads(
     return service.list_threads(limit=limit)
 
 
+@router.post("/threads/sync-remote-archives", response_model=ArchiveSyncResponse)
+def sync_remote_archives(
+    service: SessionHistoryServiceDependency,
+) -> ArchiveSyncResponse:
+    """Sync local history by removing sessions whose remote archives are now missing."""
+
+    return service.sync_remote_archive_deletions()
+
+
 @router.get("/threads/{root_session_id}", response_model=SessionThreadResponse)
 def get_thread(
     root_session_id: str,
@@ -66,6 +77,22 @@ def get_thread(
 
     try:
         return service.get_thread(root_session_id)
+    except SessionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "session_not_found", "message": str(exc)},
+        ) from exc
+
+
+@router.delete("/threads/{root_session_id}", response_model=ThreadDeleteResponse)
+def delete_thread(
+    root_session_id: str,
+    service: SessionHistoryServiceDependency,
+) -> ThreadDeleteResponse:
+    """Delete one local thread and best-effort delete its linked Feishu archives."""
+
+    try:
+        return service.delete_thread(root_session_id)
     except SessionNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -7,91 +7,190 @@
   <link rel="stylesheet" href="/static/swiss.css">
 </head>
 <body class="page">
-  <main class="page-grid">
-    <header class="page-header">
-      <div class="page-title-row">
-        <h1 class="page-title">{{ app_name }}</h1>
-        <div class="dot-matrix" aria-hidden="true">
-          {% for _ in range(24) %}
-          <span class="dot-matrix-cell"></span>
-          {% endfor %}
+  <header class="topbar">
+    <div class="topbar-brand">
+      <a class="topbar-logo-link" href="/app" aria-label="{{ app_name }}">
+        <img
+          class="topbar-logo"
+          src="/static/assets/logo/IdeaOS_logo.png"
+          alt="{{ app_name }} logo"
+        >
+      </a>
+      <div class="topbar-brand-copy">
+        <p class="topbar-kicker">IDEA DEVELOPMENT SYSTEM</p>
+        <h1 class="topbar-title">{{ app_name }}</h1>
+      </div>
+    </div>
+    <div class="topbar-user">
+      <div class="topbar-user-copy">
+        <span class="topbar-user-value">username</span>
+      </div>
+      <div class="topbar-user-avatar-shell" aria-hidden="true">
+        <img
+          class="topbar-user-avatar"
+          src="/static/assets/logo/user.png"
+          alt=""
+        >
+      </div>
+      <button class="topbar-more" type="button" aria-label="Open user menu placeholder">⋯</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-labelledby="sidebar-title">
+      <div class="sidebar-head">
+        <h2 class="sidebar-title" id="sidebar-title">
+          <span class="sidebar-title-main">历史记录</span>
+          <span class="sidebar-title-kicker">/ HISTORY</span>
+        </h2>
+        <div class="sidebar-actions">
+          <button
+            class="sidebar-icon-button"
+            id="history-search-toggle"
+            type="button"
+            aria-label="Toggle history search placeholder"
+            aria-expanded="false"
+          >
+            <img
+              class="sidebar-icon"
+              src="/static/assets/logo/search.png"
+              alt=""
+            >
+          </button>
+          <button
+            class="sidebar-icon-button sidebar-refresh-button"
+            id="history-refresh"
+            type="button"
+            aria-label="Refresh session history"
+            title="Refresh session history"
+          >
+            <img
+              class="sidebar-icon sidebar-refresh-icon"
+              src="/static/assets/logo/refresh.png"
+              alt=""
+            >
+          </button>
+          <button
+            class="sidebar-icon-button"
+            id="sidebar-toggle"
+            type="button"
+            aria-label="Collapse sidebar"
+            aria-expanded="true"
+          >
+            <img
+              class="sidebar-icon"
+              src="/static/assets/logo/close.png"
+              alt=""
+            >
+          </button>
         </div>
       </div>
-      <div class="header-rule" aria-hidden="true"></div>
-    </header>
 
-    <section class="idea-panel" aria-labelledby="idea-panel-title">
-      <div class="section-head section-head-single">
-        <h2 class="section-title" id="idea-panel-title">RAW IDEA / 原始想法</h2>
+      <div class="sidebar-search hidden" id="sidebar-search-panel">
+        <label class="sidebar-search-label" for="sidebar-search-input">SEARCH / 搜索占位</label>
+        <input
+          class="sidebar-search-input"
+          id="sidebar-search-input"
+          type="text"
+          placeholder="搜索能力将在后续版本接入"
+          readonly
+        >
       </div>
-      <form class="idea-form" id="idea-form">
-        <label class="idea-label" for="idea-content">
-          输入一句原始想法，系统会先判断它是否已经形成可分析的解决方案轮廓。
-        </label>
-        <textarea
-          class="idea-textarea"
-          id="idea-content"
-          name="content"
-          rows="8"
-          placeholder="例如：我想做一个帮助独立开发者快速验证产品想法的工具。"
-          required
-        ></textarea>
-        <div class="idea-actions">
-          <button class="idea-submit" id="idea-submit" type="submit">分析 / ANALYZE</button>
-          <button class="idea-reset" id="idea-reset" type="button">重置 / RESET</button>
-        </div>
-      </form>
-    </section>
 
-    <section class="history-shell" id="history-shell" aria-labelledby="history-panel-title">
-      <div class="section-head section-head-single">
-        <h2 class="section-title" id="history-panel-title">LOCAL HISTORY / 本地历史</h2>
-      </div>
-      <div class="history-grid">
-        <section class="history-panel" aria-labelledby="history-session-list-title">
-          <div class="history-panel-head">
-            <div>
-              <div class="assumptions-label" id="history-session-list-title">RECENT SESSIONS / 最近会话</div>
-              <p class="history-panel-copy">
-                Completed sessions saved in local SQLite will appear here for review and follow-up continuation.
-              </p>
+      <section class="history-shell" id="history-shell" aria-labelledby="sidebar-title">
+        <div class="history-stack">
+          <section class="history-panel sidebar-history-panel" aria-labelledby="sidebar-title">
+            <div class="history-panel-body" id="history-session-list">
+              <p class="history-empty">Loading history...</p>
             </div>
-            <button class="history-refresh" id="history-refresh" type="button">刷新 / REFRESH</button>
-          </div>
-          <div class="history-panel-body" id="history-session-list">
-            <p class="history-empty">Loading recent sessions...</p>
-          </div>
+          </section>
+        </div>
+      </section>
+    </aside>
+
+    <section class="workspace" aria-labelledby="workspace-title">
+      <div class="workspace-inner">
+        <section class="workspace-stage">
+          <header class="workspace-header">
+            <h2 class="workspace-title" id="workspace-title">{{ app_name }}</h2>
+            <div class="workspace-signals" aria-label="Current interaction boundaries">
+              <span class="workspace-signal">Single Analysis / 单次分析</span>
+              <span class="workspace-signal">One Clarification / 最多一次澄清</span>
+              <span class="workspace-signal">Feishu Archive / 飞书归档</span>
+            </div>
+          </header>
+
+          <section class="idea-panel" aria-labelledby="idea-panel-title">
+            <div class="section-head section-head-single">
+              <h2 class="section-title" id="idea-panel-title">RAW IDEA / 原始想法</h2>
+            </div>
+            <form class="idea-form" id="idea-form">
+              <textarea
+                class="idea-textarea"
+                id="idea-content"
+                name="content"
+                rows="8"
+                placeholder="从给 IdeaOS 输入一句想法开始，例如：我想做一个帮助独立开发者快速验证产品想法的工具。"
+                required
+              ></textarea>
+              <div class="idea-actions">
+                <button class="idea-submit" id="idea-submit" type="submit">分析 / ANALYZE</button>
+                <button class="idea-reset" id="idea-reset" type="button">重置 / RESET</button>
+              </div>
+            </form>
+          </section>
         </section>
 
-        <section class="history-panel" aria-labelledby="history-thread-title">
-          <div class="history-panel-head">
+        <section
+          class="thread-context-panel hidden"
+          id="thread-context-panel"
+          aria-labelledby="history-thread-title"
+        >
+          <div class="thread-context-head">
             <div>
               <div class="assumptions-label" id="history-thread-title">CURRENT THREAD / 当前链路</div>
-              <p class="history-panel-copy">
-                Select one completed session to inspect its parent-child chain and continue from that specific node.
+              <p class="thread-context-copy">
+                Open one completed session to inspect its chain and continue follow-up from that exact version.
               </p>
             </div>
           </div>
-          <div class="history-panel-body" id="history-thread-content">
+          <div class="thread-context-body" id="history-thread-content">
             <p class="history-empty">Select a session to inspect its thread.</p>
           </div>
         </section>
-      </div>
-    </section>
 
-    <section class="result-shell" id="result-shell" aria-live="polite">
-      <div class="result-placeholder" id="result-placeholder">
-        <div class="section-head">
-          <span class="section-index">01</span>
-          <h2 class="section-title">RESULT / 结果区</h2>
-        </div>
-        <p class="result-placeholder-copy">
-          提交后，这里将显示澄清问题、完整分析、follow-up 局部完善结果，以及当前会话的归档状态。
-        </p>
-      </div>
+        <section class="result-shell" id="result-shell" aria-live="polite" aria-busy="false">
+          <div class="workspace-busy hidden" id="workspace-busy" role="status" aria-live="polite">
+            <div class="workspace-busy-spinner" aria-hidden="true"></div>
+            <div class="workspace-busy-copy">
+              <div class="workspace-busy-label">WORKSPACE BUSY / 正在处理中</div>
+              <p class="workspace-busy-text" id="workspace-busy-text">
+                Analysis is running. Please keep this workspace open.
+              </p>
+            </div>
+          </div>
 
-      <div class="result-error hidden" id="result-error" role="alert"></div>
-      <div class="result-content hidden" id="result-content"></div>
+          <div class="result-placeholder" id="result-placeholder">
+            <div class="result-placeholder-card">
+              <div class="section-head">
+                <span class="section-index">01</span>
+                <h2 class="section-title">RESULT / 结果区</h2>
+              </div>
+              <p class="result-placeholder-copy">
+                提交后，这里将显示澄清问题、完整分析、follow-up 局部完善结果，以及当前会话的归档状态。
+              </p>
+              <div class="result-placeholder-hints">
+                <div class="result-placeholder-hint">Clarification when needed / 信息不足时最多一次澄清</div>
+                <div class="result-placeholder-hint">Structured analysis / 九个结构化分析板块</div>
+                <div class="result-placeholder-hint">Feishu archive feedback / 归档状态与链接回显</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="result-error hidden" id="result-error" role="alert"></div>
+          <div class="result-content hidden" id="result-content"></div>
+        </section>
+      </div>
     </section>
   </main>
 

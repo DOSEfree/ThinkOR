@@ -4,10 +4,19 @@ const form = document.getElementById("idea-form");
 const textarea = document.getElementById("idea-content");
 const submitButton = document.getElementById("idea-submit");
 const resetButton = document.getElementById("idea-reset");
+const sidebar = document.getElementById("sidebar");
+const sidebarToggleButton = document.getElementById("sidebar-toggle");
+const historySearchToggleButton = document.getElementById("history-search-toggle");
+const sidebarSearchPanel = document.getElementById("sidebar-search-panel");
+const sidebarSearchInput = document.getElementById("sidebar-search-input");
 const historyShell = document.getElementById("history-shell");
 const historyRefreshButton = document.getElementById("history-refresh");
 const historySessionList = document.getElementById("history-session-list");
+const threadContextPanel = document.getElementById("thread-context-panel");
 const historyThreadContent = document.getElementById("history-thread-content");
+const resultShell = document.getElementById("result-shell");
+const workspaceBusy = document.getElementById("workspace-busy");
+const workspaceBusyText = document.getElementById("workspace-busy-text");
 const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
@@ -18,6 +27,14 @@ let selectedHistorySessionId = null;
 let selectedThreadRootSessionId = null;
 let isSubmitting = false;
 let activeLoadingButton = null;
+let historyThreadSummaries = [];
+
+const expandedHistoryRootIds = new Set();
+const historyThreadCache = new Map();
+const historyThreadLoadErrors = new Map();
+const loadingHistoryRootIds = new Set();
+
+const DEFAULT_WORKSPACE_BUSY_MESSAGE = "Analysis is running. Please keep this workspace open.";
 
 const ANALYSIS_FIELDS = [
   ["01", "SUMMARY / 摘要", "summary", "copy", "analysis-span-12"],
@@ -90,43 +107,67 @@ resetButton.addEventListener("click", () => {
   textarea.focus();
 });
 
+initializeUi();
 void initializeHistory();
+
+function initializeUi() {
+  setSidebarCollapsed(false);
+  setSearchPanelVisible(false);
+  setWorkspaceMode("empty");
+
+  if (historySearchToggleButton instanceof HTMLButtonElement) {
+    historySearchToggleButton.addEventListener("click", () => {
+      if (document.body.classList.contains("page-sidebar-collapsed")) {
+        setSidebarCollapsed(false);
+      }
+
+      const shouldOpen = sidebarSearchPanel instanceof HTMLElement
+        ? sidebarSearchPanel.classList.contains("hidden")
+        : false;
+      setSearchPanelVisible(shouldOpen);
+    });
+  }
+
+  if (sidebarToggleButton instanceof HTMLButtonElement) {
+    sidebarToggleButton.addEventListener("click", () => {
+      const shouldCollapse = !document.body.classList.contains("page-sidebar-collapsed");
+      if (shouldCollapse) {
+        setSearchPanelVisible(false);
+      }
+      setSidebarCollapsed(shouldCollapse);
+    });
+  }
+}
 
 if (historyRefreshButton instanceof HTMLButtonElement) {
   historyRefreshButton.addEventListener("click", async () => {
     if (isSubmitting) {
       return;
     }
-    await loadRecentSessions();
-    if (selectedThreadRootSessionId) {
-      await loadThreadView(selectedThreadRootSessionId);
+    historyRefreshButton.disabled = true;
+    await syncRemoteArchiveDeletions();
+    historyThreadCache.clear();
+    historyThreadLoadErrors.clear();
+    try {
+      await loadRecentSessions();
+      if (
+        selectedThreadRootSessionId
+        && historyThreadSummaries.some(
+          (item) => item.root_session_id === selectedThreadRootSessionId,
+        )
+      ) {
+        await loadThreadView(selectedThreadRootSessionId);
+      } else if (selectedThreadRootSessionId) {
+        clearResult();
+      }
+    } finally {
+      historyRefreshButton.disabled = false;
     }
   });
 }
 
-if (historyShell instanceof HTMLElement) {
-  historyShell.addEventListener("click", async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || isSubmitting) {
-      return;
-    }
-
-    if (target.matches("[data-action='open-history-session']")) {
-      const sessionId = target.getAttribute("data-session-id");
-      if (sessionId) {
-        await openHistorySession(sessionId);
-      }
-      return;
-    }
-
-    if (target.matches("[data-action='continue-history-follow-up']")) {
-      const sessionId = target.getAttribute("data-session-id");
-      if (sessionId) {
-        await openHistorySession(sessionId, { openComposer: true });
-      }
-    }
-  });
-}
+attachSessionActionContainer(historyShell);
+attachSessionActionContainer(threadContextPanel);
 
 resultContent.addEventListener("click", async (event) => {
   const target = event.target;
@@ -151,6 +192,14 @@ resultContent.addEventListener("click", async (event) => {
 
   if (target.matches("[data-action='start-follow-up']")) {
     renderFollowUpComposer();
+    return;
+  }
+
+  if (target.matches("[data-action='restore-follow-up-draft']")) {
+    const sessionId = target.getAttribute("data-session-id");
+    if (sessionId) {
+      await openHistorySession(sessionId);
+    }
     return;
   }
 
@@ -406,6 +455,50 @@ async function initializeHistory() {
   await loadRecentSessions();
 }
 
+function attachSessionActionContainer(container) {
+  if (!(container instanceof HTMLElement)) {
+    return;
+  }
+
+  container.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || isSubmitting) {
+      return;
+    }
+
+    if (target.matches("[data-action='open-history-session']")) {
+      const sessionId = target.getAttribute("data-session-id");
+      if (sessionId) {
+        await openHistorySession(sessionId);
+      }
+      return;
+    }
+
+    if (target.matches("[data-action='continue-history-follow-up']")) {
+      const sessionId = target.getAttribute("data-session-id");
+      if (sessionId) {
+        await openHistorySession(sessionId, { openComposer: true });
+      }
+      return;
+    }
+
+    if (target.matches("[data-action='toggle-history-thread']")) {
+      const rootSessionId = target.getAttribute("data-root-session-id");
+      if (rootSessionId) {
+        await toggleHistoryThread(rootSessionId);
+      }
+      return;
+    }
+
+    if (target.matches("[data-action='delete-history-thread']")) {
+      const rootSessionId = target.getAttribute("data-root-session-id");
+      if (rootSessionId) {
+        await handleDeleteHistoryThread(rootSessionId, target);
+      }
+    }
+  });
+}
+
 async function refreshHistoryAfterMutation(payload) {
   await loadRecentSessions();
 
@@ -417,6 +510,10 @@ async function refreshHistoryAfterMutation(payload) {
   }
   if (rootSessionId) {
     selectedThreadRootSessionId = rootSessionId;
+    expandedHistoryRootIds.add(rootSessionId);
+    historyThreadLoadErrors.delete(rootSessionId);
+    historyThreadCache.delete(rootSessionId);
+    loadingHistoryRootIds.add(rootSessionId);
     await loadThreadView(rootSessionId);
   }
 }
@@ -426,29 +523,60 @@ async function loadRecentSessions() {
     return;
   }
 
-  historySessionList.innerHTML = "<p class=\"history-empty\">Loading recent sessions...</p>";
+  historySessionList.innerHTML = "<p class=\"history-empty\">Loading history...</p>";
 
   try {
-    const response = await fetch("/api/v1/sessions?limit=12");
+    const response = await fetch("/api/v1/threads?limit=24");
     const data = await response.json().catch(() => ({ items: [] }));
 
     if (!response.ok) {
-      historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load recent sessions.</p>";
+      historyThreadSummaries = [];
+      historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load history.</p>";
       return;
     }
 
     const items = Array.isArray(data.items) ? data.items : [];
+    historyThreadSummaries = items;
     renderHistorySessionList(items);
   } catch (_error) {
-    historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load recent sessions.</p>";
+    historyThreadSummaries = [];
+    historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load history.</p>";
+  }
+}
+
+async function syncRemoteArchiveDeletions() {
+  try {
+    const response = await fetch("/api/v1/threads/sync-remote-archives", {
+      method: "POST",
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return;
+    }
+
+    const removedSessionIds = Array.isArray(data.removed_session_ids)
+      ? data.removed_session_ids.filter((item) => typeof item === "string")
+      : [];
+
+    if (
+      selectedHistorySessionId
+      && removedSessionIds.includes(selectedHistorySessionId)
+    ) {
+      clearResult();
+    }
+  } catch (_error) {
+    // Refresh should still continue to local history reload even if remote sync fails.
   }
 }
 
 async function loadThreadView(rootSessionId) {
   if (!(historyThreadContent instanceof HTMLElement) || !rootSessionId) {
+    resetThreadContextPanel();
     return;
   }
 
+  setThreadContextVisible(true);
   historyThreadContent.innerHTML = "<p class=\"history-empty\">Loading thread...</p>";
 
   try {
@@ -456,13 +584,29 @@ async function loadThreadView(rootSessionId) {
     const data = await response.json().catch(() => ({ items: [] }));
 
     if (!response.ok) {
+      historyThreadLoadErrors.set(rootSessionId, "failed");
+      loadingHistoryRootIds.delete(rootSessionId);
+      if (expandedHistoryRootIds.has(rootSessionId)) {
+        renderHistorySessionList(historyThreadSummaries);
+      }
       historyThreadContent.innerHTML = "<p class=\"history-empty\">Failed to load thread.</p>";
       return;
     }
 
     selectedThreadRootSessionId = rootSessionId;
+    historyThreadLoadErrors.delete(rootSessionId);
+    historyThreadCache.set(rootSessionId, data);
+    loadingHistoryRootIds.delete(rootSessionId);
+    if (expandedHistoryRootIds.has(rootSessionId)) {
+      renderHistorySessionList(historyThreadSummaries);
+    }
     renderThreadView(data);
   } catch (_error) {
+    historyThreadLoadErrors.set(rootSessionId, "failed");
+    loadingHistoryRootIds.delete(rootSessionId);
+    if (expandedHistoryRootIds.has(rootSessionId)) {
+      renderHistorySessionList(historyThreadSummaries);
+    }
     historyThreadContent.innerHTML = "<p class=\"history-empty\">Failed to load thread.</p>";
   }
 }
@@ -484,6 +628,10 @@ async function openHistorySession(sessionId, options = {}) {
     selectedHistorySessionId = data.session_id;
     selectedThreadRootSessionId = data.root_session_id;
     currentSessionId = typeof data.session_id === "string" ? data.session_id : currentSessionId;
+    expandedHistoryRootIds.add(data.root_session_id);
+    historyThreadLoadErrors.delete(data.root_session_id);
+    historyThreadCache.delete(data.root_session_id);
+    loadingHistoryRootIds.add(data.root_session_id);
     populateInputFromDetail(data);
     renderHistoryDetail(data);
     await loadRecentSessions();
@@ -503,20 +651,21 @@ function renderHistorySessionList(items) {
   }
 
   if (!Array.isArray(items) || !items.length) {
-    historySessionList.innerHTML = "<p class=\"history-empty\">No completed local sessions yet.</p>";
+    historySessionList.innerHTML = "<p class=\"history-empty\">No completed local threads yet.</p>";
     return;
   }
 
+  const buckets = groupThreadsByRecency(items);
   historySessionList.innerHTML = `
     <div class="history-list">
-      ${items.map((item) => renderHistorySessionItem(item)).join("")}
+      ${buckets.map((bucket) => renderHistoryBucket(bucket)).join("")}
     </div>
   `;
 }
 
 function renderHistorySessionItem(item) {
-  const statusMeta = getArchiveStatusMeta(item.archive_status);
   const isActive = item.session_id === selectedHistorySessionId;
+  const archiveBadge = renderHistoryArchiveBadge(item.archive_status);
   const continueAction = item.can_continue_follow_up
     ? `
       <button
@@ -537,9 +686,7 @@ function renderHistorySessionItem(item) {
           <h3 class="history-item-title">${escapeHtml(item.archive_title || "Untitled Session")}</h3>
           <p class="history-item-copy">${escapeHtml(formatSessionKindLabel(item.session_kind))}</p>
         </div>
-        <div class="history-item-meta">
-          <span class="history-tag ${getHistoryStatusClass(item.archive_status)}">${escapeHtml(statusMeta.badge)}</span>
-        </div>
+        ${archiveBadge}
       </div>
       <p class="history-item-copy">Session ${escapeHtml(item.session_id)}</p>
       <p class="history-item-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
@@ -558,6 +705,268 @@ function renderHistorySessionItem(item) {
   `;
 }
 
+function renderHistoryBucket(bucket) {
+  return `
+    <section class="history-bucket">
+      <div class="history-bucket-label">${escapeHtml(bucket.label)}</div>
+      <div class="history-folder-list">
+        ${bucket.items.map((item) => renderHistoryThreadSummary(item)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderHistoryThreadSummary(item) {
+  const isActive = item.root_session_id === selectedThreadRootSessionId;
+  const isExpanded = expandedHistoryRootIds.has(item.root_session_id);
+  const sessionCount = Number.isFinite(item.session_count) ? Number(item.session_count) : 0;
+  const versionsLabel = sessionCount === 1 ? "1 个版本 / VERSION" : `${sessionCount} 个版本 / VERSIONS`;
+  const children = renderHistoryThreadChildren(item.root_session_id);
+  const archiveBadge = renderHistoryArchiveBadge(item.latest_archive_status);
+
+  return `
+    <article class="history-folder ${isActive ? "is-active" : ""}">
+      <div class="history-folder-head">
+        <button
+          class="history-folder-toggle"
+          type="button"
+          data-action="toggle-history-thread"
+          data-root-session-id="${escapeHtml(item.root_session_id)}"
+          aria-label="${isExpanded ? "收起版本" : "展开版本"}"
+          title="${isExpanded ? "收起版本 / Collapse versions" : "展开版本 / Expand versions"}"
+        >
+          ${isExpanded ? "▾" : "▸"}
+        </button>
+        <div class="history-folder-copy">
+          <h3 class="history-item-title">${escapeHtml(item.root_archive_title || "Untitled Thread")}</h3>
+          <div class="history-folder-summary">
+            <span class="history-count-badge">${escapeHtml(versionsLabel)}</span>
+            <p class="history-item-copy">Latest ${escapeHtml(formatDateTime(item.latest_updated_at))}</p>
+          </div>
+        </div>
+        <div class="history-folder-actions">
+          ${archiveBadge}
+          <button
+            class="history-icon-button"
+            type="button"
+            data-action="open-history-session"
+            data-session-id="${escapeHtml(item.latest_session_id)}"
+            aria-label="打开最新版本"
+            title="打开最新版本 / Open latest version"
+          >
+            ↗
+          </button>
+          <button
+            class="history-icon-button history-icon-button-danger"
+            type="button"
+            data-action="delete-history-thread"
+            data-root-session-id="${escapeHtml(item.root_session_id)}"
+            aria-label="删除这条想法线程"
+            title="删除这条想法线程并尝试清理关联飞书归档 / Delete thread"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      ${children}
+    </article>
+  `;
+}
+
+function renderHistoryThreadChildren(rootSessionId) {
+  if (!expandedHistoryRootIds.has(rootSessionId)) {
+    return "";
+  }
+
+  if (loadingHistoryRootIds.has(rootSessionId)) {
+    return `
+      <div class="history-folder-children">
+        <p class="history-item-copy history-placeholder-copy">正在加载版本… / Loading versions...</p>
+      </div>
+    `;
+  }
+
+  if (historyThreadLoadErrors.has(rootSessionId)) {
+    return `
+      <div class="history-folder-children">
+        <p class="history-item-copy history-placeholder-copy">版本加载失败，请稍后重试。 / Failed to load versions.</p>
+      </div>
+    `;
+  }
+
+  const payload = historyThreadCache.get(rootSessionId);
+  const items = payload && Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    return `
+      <div class="history-folder-children">
+        <p class="history-item-copy history-placeholder-copy">当前没有可显示的正式版本。 / No formal versions yet.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="history-folder-children">
+      <div class="history-version-list">
+        ${items.map((threadItem, index) => (
+          renderHistoryVersionItem(threadItem, index)
+        )).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderHistoryVersionItem(item, index) {
+  const isActive = item.session_id === selectedHistorySessionId;
+  const archiveBadge = renderHistoryArchiveBadge(item.archive_status);
+  const versionIndexLabel = `V${String(index + 1).padStart(2, "0")}`;
+  const versionLabel = item.session_id === item.root_session_id
+    ? `${versionIndexLabel} ROOT`
+    : versionIndexLabel;
+  const kindLabel = item.session_id === item.root_session_id
+    ? "ROOT ANALYSIS / 根分析"
+    : formatSessionKindLabel(item.session_kind);
+
+  return `
+    <article class="history-version-item ${isActive ? "is-active" : ""}">
+      <div class="history-version-main">
+        <div class="history-version-copy">
+          <div class="history-version-headline">
+            <div class="history-version-order">${escapeHtml(versionLabel)}</div>
+            <p class="history-item-copy">${escapeHtml(kindLabel)}</p>
+            ${archiveBadge}
+          </div>
+          <p class="history-item-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
+        </div>
+        <div class="history-version-actions">
+          <button
+            class="history-icon-button"
+            type="button"
+            data-action="open-history-session"
+            data-session-id="${escapeHtml(item.session_id)}"
+            aria-label="打开这个版本"
+            title="打开这个版本 / Open this version"
+          >
+            ↗
+          </button>
+          <button
+            class="history-icon-button history-icon-button-placeholder"
+            type="button"
+            disabled
+            aria-label="版本删除占位"
+            title="当前仅支持按想法线程整体删除，单版本删除后续再接入。"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+async function handleDeleteHistoryThread(rootSessionId, triggerButton) {
+  const normalizedRootSessionId = typeof rootSessionId === "string" ? rootSessionId.trim() : "";
+  if (!normalizedRootSessionId) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Delete this idea thread from local SQLite and attempt to delete its linked Feishu docs?",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  setLoadingState(true, "DELETE THREAD", triggerButton);
+  clearFeedback();
+
+  try {
+    const response = await fetch(`/api/v1/threads/${encodeURIComponent(normalizedRootSessionId)}`, {
+      method: "DELETE",
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      renderApiError(data, "Failed to delete thread.");
+      return;
+    }
+
+    clearDeletedThreadState(normalizedRootSessionId);
+    await loadRecentSessions();
+
+    const failures = Array.isArray(data.archive_delete_failures)
+      ? data.archive_delete_failures
+      : [];
+    if (failures.length) {
+      window.alert(
+        `Local thread deleted, but ${failures.length} linked Feishu archive(s) could not be removed.`,
+      );
+    }
+  } catch (_error) {
+    renderError("Failed to delete thread.");
+  } finally {
+    setLoadingState(false, "分析 / ANALYZE", triggerButton);
+  }
+}
+
+function clearDeletedThreadState(rootSessionId) {
+  historyThreadSummaries = historyThreadSummaries.filter(
+    (item) => item.root_session_id !== rootSessionId,
+  );
+  expandedHistoryRootIds.delete(rootSessionId);
+  historyThreadCache.delete(rootSessionId);
+  historyThreadLoadErrors.delete(rootSessionId);
+  loadingHistoryRootIds.delete(rootSessionId);
+
+  if (selectedThreadRootSessionId === rootSessionId) {
+    clearResult();
+    return;
+  }
+
+  renderHistorySessionList(historyThreadSummaries);
+}
+
+async function toggleHistoryThread(rootSessionId) {
+  const normalizedRootSessionId = typeof rootSessionId === "string" ? rootSessionId.trim() : "";
+  if (!normalizedRootSessionId) {
+    return;
+  }
+
+  if (expandedHistoryRootIds.has(normalizedRootSessionId)) {
+    expandedHistoryRootIds.delete(normalizedRootSessionId);
+    renderHistorySessionList(historyThreadSummaries);
+    return;
+  }
+
+  expandedHistoryRootIds.add(normalizedRootSessionId);
+  historyThreadLoadErrors.delete(normalizedRootSessionId);
+  renderHistorySessionList(historyThreadSummaries);
+
+  if (historyThreadCache.has(normalizedRootSessionId) || loadingHistoryRootIds.has(normalizedRootSessionId)) {
+    return;
+  }
+
+  loadingHistoryRootIds.add(normalizedRootSessionId);
+  renderHistorySessionList(historyThreadSummaries);
+
+  try {
+    const response = await fetch(`/api/v1/threads/${encodeURIComponent(normalizedRootSessionId)}`);
+    const data = await response.json().catch(() => ({ items: [] }));
+
+    if (!response.ok) {
+      historyThreadLoadErrors.set(normalizedRootSessionId, "failed");
+      return;
+    }
+
+    historyThreadCache.set(normalizedRootSessionId, data);
+    historyThreadLoadErrors.delete(normalizedRootSessionId);
+  } catch (_error) {
+    historyThreadLoadErrors.set(normalizedRootSessionId, "failed");
+  } finally {
+    loadingHistoryRootIds.delete(normalizedRootSessionId);
+    renderHistorySessionList(historyThreadSummaries);
+  }
+}
+
 function renderThreadView(payload) {
   if (!(historyThreadContent instanceof HTMLElement)) {
     return;
@@ -565,16 +974,19 @@ function renderThreadView(payload) {
 
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (!items.length) {
+    setThreadContextVisible(true);
     historyThreadContent.innerHTML = "<p class=\"history-empty\">No sessions found in this thread.</p>";
     return;
   }
 
   const rootTitle = items[0].archive_title || "Untitled Thread";
+  setThreadContextVisible(true);
   historyThreadContent.innerHTML = `
     <section class="thread-panel-headline">
       <div class="assumptions-label">THREAD ROOT / 根链路</div>
       <h3 class="thread-title">${escapeHtml(rootTitle)}</h3>
       <p class="thread-meta-copy">Root session ${escapeHtml(payload.root_session_id || "")}</p>
+      <p class="thread-meta-copy">Contains ${escapeHtml(String(items.length))} session nodes.</p>
     </section>
     <div class="history-list">
       ${items.map((item) => renderThreadItem(item)).join("")}
@@ -584,6 +996,7 @@ function renderThreadView(payload) {
 
 function renderThreadItem(item) {
   const isActive = item.session_id === selectedHistorySessionId;
+  const archiveBadge = renderHistoryArchiveBadge(item.archive_status);
   const continueAction = item.can_continue_follow_up
     ? `
       <button
@@ -604,9 +1017,7 @@ function renderThreadItem(item) {
           <h3 class="thread-item-title">${escapeHtml(item.archive_title || "Untitled Session")}</h3>
           <p class="thread-meta-copy">${escapeHtml(formatSessionKindLabel(item.session_kind))}</p>
         </div>
-        <div class="history-item-meta">
-          <span class="history-tag ${getHistoryStatusClass(item.archive_status)}">${escapeHtml(getArchiveStatusMeta(item.archive_status).badge)}</span>
-        </div>
+        ${archiveBadge}
       </div>
       <p class="thread-meta-copy">Session ${escapeHtml(item.session_id)}</p>
       <p class="thread-meta-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
@@ -674,7 +1085,11 @@ function renderClarificationView(payload, rawContent) {
   const questions = renderQuestionCards(payload.open_questions || []);
 
   resultContent.innerHTML = `
-    ${renderStatusBar("NEEDS CLARIFICATION")}
+    ${renderStatusBar(
+      "NEEDS CLARIFICATION",
+      "One clarification round is open because the current input still lacks a few key constraints.",
+      "info",
+    )}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -697,11 +1112,16 @@ function renderClarificationView(payload, rawContent) {
 function renderAnalysisView(payload, rawContent, clarifications) {
   const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
   const analysisGrid = renderAnalysisGrid(payload.analysis);
+  const draftRecovery = renderDraftRecoveryBlock(payload);
   const clarificationRecord = renderClarificationRecord(clarifications);
   const followup = renderOpenQuestionSuggestions(payload.open_questions || []);
 
   resultContent.innerHTML = `
-    ${renderStatusBar("ANALYSIS READY")}
+    ${renderStatusBar(
+      "ANALYSIS READY",
+      "The analysis is ready. You can review it, check archive feedback, and continue with follow-up refinement.",
+      "success",
+    )}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -710,6 +1130,7 @@ function renderAnalysisView(payload, rawContent, clarifications) {
       <div class="analysis-grid">${analysisGrid}</div>
     </section>
     ${followup}
+    ${draftRecovery}
     ${renderFollowUpEntry()}
     <div class="result-actions">
       <button class="secondary-button" type="button" data-action="reset">
@@ -760,12 +1181,53 @@ function renderFollowUpComposer() {
   resultContent.insertAdjacentHTML("beforeend", composer);
 }
 
+function renderDraftRecoveryBlock(payload) {
+  const draftSessionId = typeof payload.active_follow_up_draft_id === "string"
+    ? payload.active_follow_up_draft_id
+    : "";
+  if (!draftSessionId) {
+    return "";
+  }
+
+  const draftQuestion = typeof payload.active_follow_up_draft_question === "string"
+    && payload.active_follow_up_draft_question
+    ? payload.active_follow_up_draft_question
+    : "A saved follow-up draft is available for recovery.";
+  const updatedAt = typeof payload.active_follow_up_draft_updated_at === "string"
+    && payload.active_follow_up_draft_updated_at
+    ? formatDateTime(payload.active_follow_up_draft_updated_at)
+    : "N/A";
+
+  return `
+    <section class="followup-block followup-draft-recovery">
+      <div class="assumptions-label">LOCAL DRAFT / 可恢复草稿</div>
+      <p class="analysis-copy">${escapeHtml(draftQuestion)}</p>
+      <p class="analysis-copy">This draft stays in local SQLite for 7 days unless you confirm compose or let it expire.</p>
+      <div class="result-actions">
+        <button
+          class="secondary-button"
+          type="button"
+          data-action="restore-follow-up-draft"
+          data-session-id="${escapeHtml(draftSessionId)}"
+        >
+          恢复上次局部完善 / RESTORE DRAFT
+        </button>
+        <span class="history-inline-meta">Updated ${escapeHtml(updatedAt)}</span>
+      </div>
+    </section>
+  `;
+}
+
 function renderFollowUpClarificationView(payload, followUpQuestion) {
   const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
   const questions = renderQuestionCards(payload.open_questions || []);
 
   resultContent.innerHTML = `
-    ${renderStatusBar("FOLLOW-UP NEEDS CLARIFICATION")}
+    ${renderStatusBar(
+      "FOLLOW-UP NEEDS CLARIFICATION",
+      "The follow-up request still needs one more clarification round before refinement can be generated.",
+      "attention",
+    )}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -801,7 +1263,11 @@ function renderRefinementView(payload) {
   const nextActions = renderListItems(refinement.next_actions || [], "当前没有额外后续动作。");
 
   resultContent.innerHTML = `
-    ${renderStatusBar("REFINEMENT READY")}
+    ${renderStatusBar(
+      "REFINEMENT READY",
+      "The local refinement result is ready. Confirm when you want to merge it into a new full plan.",
+      "success",
+    )}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -852,6 +1318,7 @@ function renderRefinementView(payload) {
 function renderComposedPlanView(payload) {
   const assumptions = renderListItems(payload.assumptions, "当前没有额外系统假设。");
   const analysisGrid = renderAnalysisGrid(payload.analysis);
+  const draftRecovery = renderDraftRecoveryBlock(payload);
   const refinementBlock = payload.refinement_result
     ? `
       <section class="followup-block">
@@ -862,7 +1329,11 @@ function renderComposedPlanView(payload) {
     : "";
 
   resultContent.innerHTML = `
-    ${renderStatusBar("NEW FULL PLAN READY")}
+    ${renderStatusBar(
+      "NEW FULL PLAN READY",
+      "The updated full plan has been composed from the approved refinement and is ready for another follow-up round.",
+      "success",
+    )}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -871,6 +1342,7 @@ function renderComposedPlanView(payload) {
       <div class="analysis-grid">${analysisGrid}</div>
     </section>
     ${renderOpenQuestionSuggestions(payload.open_questions || [])}
+    ${draftRecovery}
     ${renderFollowUpEntry()}
     <div class="result-actions">
       <button class="secondary-button" type="button" data-action="reset">
@@ -881,11 +1353,18 @@ function renderComposedPlanView(payload) {
   showContent();
 }
 
-function renderStatusBar(label) {
+function renderStatusBar(label, note = "", tone = "neutral") {
+  const normalizedTone = typeof tone === "string" && tone ? tone : "neutral";
+  const noteBlock = note
+    ? `<p class="result-status-note">${escapeHtml(note)}</p>`
+    : "";
   return `
-    <div class="result-status-bar">
+    <div class="result-status-bar result-status-bar-${escapeHtml(normalizedTone)}">
       <div class="result-status-label">STATUS</div>
-      <div class="result-status-value">${escapeHtml(label)}</div>
+      <div class="result-status-copy">
+        <div class="result-status-value">${escapeHtml(label)}</div>
+        ${noteBlock}
+      </div>
     </div>
   `;
 }
@@ -909,7 +1388,7 @@ function renderArchivePanel(payload) {
   const archiveStatus = typeof payload.archive_status === "string" && payload.archive_status
     ? payload.archive_status
     : "not_triggered";
-  const statusMeta = ARCHIVE_STATUS_META[archiveStatus] || ARCHIVE_STATUS_META.not_triggered;
+  const statusMeta = resolveArchivePanelStatusMeta(payload, archiveStatus, sessionKind);
   const archiveLink = typeof payload.archive_url === "string" && payload.archive_url
     ? payload.archive_url
     : null;
@@ -974,6 +1453,24 @@ function renderArchivePanel(payload) {
       ${archiveAction}
     </section>
   `;
+}
+
+function resolveArchivePanelStatusMeta(payload, archiveStatus, sessionKind) {
+  if (
+    sessionKind === "follow_up_refinement"
+    && archiveStatus === "not_triggered"
+    && payload
+    && payload.needs_clarification === false
+    && payload.refinement_result
+  ) {
+    return {
+      badge: "LOCAL DRAFT",
+      label: "CACHED FOR 7 DAYS",
+      note: "This refinement stays in local SQLite for 7 days. Confirm compose to generate and archive a new formal full plan.",
+    };
+  }
+
+  return getArchiveStatusMeta(archiveStatus);
 }
 
 function renderInputEcho(inputEcho) {
@@ -1177,6 +1674,19 @@ function getHistoryStatusClass(archiveStatus) {
   return "";
 }
 
+function renderHistoryArchiveBadge(archiveStatus) {
+  if (archiveStatus === "succeeded") {
+    return "";
+  }
+
+  const statusMeta = getArchiveStatusMeta(archiveStatus);
+  return `
+    <div class="history-item-meta">
+      <span class="history-tag ${getHistoryStatusClass(archiveStatus)}">${escapeHtml(statusMeta.badge)}</span>
+    </div>
+  `;
+}
+
 function formatDateTime(value) {
   if (typeof value !== "string" || !value) {
     return "N/A";
@@ -1196,6 +1706,47 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function groupThreadsByRecency(items) {
+  const grouped = new Map();
+
+  for (const item of items) {
+    const label = formatHistoryBucketLabel(item.latest_updated_at);
+    const bucketItems = grouped.get(label) || [];
+    bucketItems.push(item);
+    grouped.set(label, bucketItems);
+  }
+
+  return Array.from(grouped.entries()).map(([label, bucketItems]) => ({
+    label,
+    items: bucketItems,
+  }));
+}
+
+function formatHistoryBucketLabel(value) {
+  if (typeof value !== "string" || !value) {
+    return "更早";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "更早";
+  }
+
+  const now = new Date();
+  const diffMs = Math.max(0, now.getTime() - date.getTime());
+  const diffDays = diffMs / (24 * 60 * 60 * 1000);
+
+  if (diffDays <= 7) {
+    return "7天内";
+  }
+  if (diffDays <= 30) {
+    return "30天内";
+  }
+
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${date.getFullYear()}-${month}`;
+}
+
 function renderApiError(data, fallbackMessage) {
   const detail = data && typeof data === "object" ? data.detail : null;
   const message = detail && typeof detail === "object" && "message" in detail
@@ -1204,13 +1755,75 @@ function renderApiError(data, fallbackMessage) {
   renderError(message);
 }
 
+function setSidebarCollapsed(isCollapsed) {
+  document.body.classList.toggle("page-sidebar-collapsed", isCollapsed);
+
+  if (sidebarToggleButton instanceof HTMLButtonElement) {
+    sidebarToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+  }
+
+  if (sidebar instanceof HTMLElement) {
+    sidebar.setAttribute("data-collapsed", String(isCollapsed));
+  }
+}
+
+function setSearchPanelVisible(isVisible) {
+  if (sidebarSearchPanel instanceof HTMLElement) {
+    sidebarSearchPanel.classList.toggle("hidden", !isVisible);
+  }
+
+  if (historySearchToggleButton instanceof HTMLButtonElement) {
+    historySearchToggleButton.setAttribute("aria-expanded", String(isVisible));
+  }
+
+  if (isVisible && sidebarSearchInput instanceof HTMLInputElement) {
+    sidebarSearchInput.focus();
+  }
+}
+
+function setWorkspaceMode(mode) {
+  const isActive = mode === "active";
+  document.body.classList.toggle("page-workspace-empty", !isActive);
+  document.body.classList.toggle("page-workspace-active", isActive);
+}
+
+function setThreadContextVisible(isVisible) {
+  if (!(threadContextPanel instanceof HTMLElement)) {
+    return;
+  }
+
+  threadContextPanel.classList.toggle("hidden", !isVisible);
+}
+
+function resetThreadContextPanel() {
+  setThreadContextVisible(false);
+  if (historyThreadContent instanceof HTMLElement) {
+    historyThreadContent.innerHTML = "<p class=\"history-empty\">Select a session to inspect its thread.</p>";
+  }
+}
+
+function clearActiveSessionMarkers() {
+  const activeItems = document.querySelectorAll(
+    ".history-folder.is-active, .history-version-item.is-active, .history-item.is-active, .thread-item.is-active",
+  );
+  for (const item of activeItems) {
+    item.classList.remove("is-active");
+  }
+}
+
 function renderError(message) {
+  setWorkspaceMode("active");
+  const hasExistingContent = Boolean(resultContent.innerHTML.trim());
+  const note = hasExistingContent
+    ? "<p class=\"result-error-note\">The previous result is preserved below so you can compare it while debugging.</p>"
+    : "<p class=\"result-error-note\">No valid result was rendered for this request.</p>";
   resultError.innerHTML = `
     <div class="section-head">
       <span class="section-index">XX</span>
       <h2 class="section-title">ERROR / 请求失败</h2>
     </div>
     <p class="result-error-copy">${escapeHtml(message)}</p>
+    ${note}
   `;
   resultPlaceholder.classList.add("hidden");
   resultError.classList.remove("hidden");
@@ -1228,6 +1841,7 @@ function clearFeedback() {
 }
 
 function showContent() {
+  setWorkspaceMode("active");
   resultPlaceholder.classList.add("hidden");
   resultError.classList.add("hidden");
   resultContent.classList.remove("hidden");
@@ -1237,24 +1851,29 @@ function clearResult() {
   currentSessionId = null;
   currentView = null;
   selectedHistorySessionId = null;
+  selectedThreadRootSessionId = null;
+  setWorkspaceMode("empty");
+  setWorkspaceBusy(false);
   resultPlaceholder.classList.remove("hidden");
   resultContent.classList.add("hidden");
   resultError.classList.add("hidden");
   resultContent.innerHTML = "";
   resultError.innerHTML = "";
-  if (historyThreadContent instanceof HTMLElement) {
-    historyThreadContent.innerHTML = "<p class=\"history-empty\">Select a session to inspect its thread.</p>";
-  }
+  clearActiveSessionMarkers();
+  resetThreadContextPanel();
 }
 
 function setLoadingState(isLoading, label, triggerButton) {
   isSubmitting = isLoading;
 
   if (isLoading) {
+    setWorkspaceMode("active");
+    setWorkspaceBusy(true, formatWorkspaceBusyMessage(label));
     activeLoadingButton = triggerButton instanceof HTMLButtonElement ? triggerButton : null;
     if (activeLoadingButton !== null) {
       activeLoadingButton.dataset.originalLabel = activeLoadingButton.textContent || "";
       activeLoadingButton.textContent = `${label} ...`;
+      activeLoadingButton.setAttribute("aria-busy", "true");
     }
   }
 
@@ -1263,6 +1882,7 @@ function setLoadingState(isLoading, label, triggerButton) {
     if (originalLabel) {
       activeLoadingButton.textContent = originalLabel;
     }
+    activeLoadingButton.removeAttribute("aria-busy");
     delete activeLoadingButton.dataset.originalLabel;
     activeLoadingButton = null;
   }
@@ -1272,9 +1892,42 @@ function setLoadingState(isLoading, label, triggerButton) {
 
   if (!isLoading) {
     submitButton.textContent = "分析 / ANALYZE";
+    setWorkspaceBusy(false);
   }
 
   setActionButtonsDisabled(isLoading);
+}
+
+function formatWorkspaceBusyMessage(label) {
+  const normalizedLabel = String(label || "").toUpperCase();
+  if (normalizedLabel.includes("DELETE")) {
+    return "Deleting this history thread and attempting to remove its linked Feishu archives.";
+  }
+  if (normalizedLabel.includes("COMPOSE")) {
+    return "Composing a new full plan from the approved refinement. Please keep this workspace open.";
+  }
+  if (normalizedLabel.includes("REFINE")) {
+    return "Generating a follow-up refinement for this session. Please keep this workspace open.";
+  }
+  if (normalizedLabel.includes("RE-RUN")) {
+    return "Re-running the current request with the latest clarifications. Please keep this workspace open.";
+  }
+  return DEFAULT_WORKSPACE_BUSY_MESSAGE;
+}
+
+function setWorkspaceBusy(isBusy, message = DEFAULT_WORKSPACE_BUSY_MESSAGE) {
+  if (resultShell instanceof HTMLElement) {
+    resultShell.classList.toggle("is-busy", isBusy);
+    resultShell.setAttribute("aria-busy", String(isBusy));
+  }
+
+  if (workspaceBusy instanceof HTMLElement) {
+    workspaceBusy.classList.toggle("hidden", !isBusy);
+  }
+
+  if (workspaceBusyText instanceof HTMLElement) {
+    workspaceBusyText.textContent = isBusy ? message : DEFAULT_WORKSPACE_BUSY_MESSAGE;
+  }
 }
 
 function setActionButtonsDisabled(isDisabled) {

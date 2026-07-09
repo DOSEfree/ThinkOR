@@ -7,7 +7,14 @@ from ideaos_agent.domain.analysis import (
     RefinementResult,
     SectionUpdate,
 )
-from ideaos_agent.domain.archive import ArchiveStatus, SessionRecord
+from ideaos_agent.domain.archive import (
+    ArchiveDeleteResult,
+    ArchiveProbeResult,
+    ArchiveResult,
+    ArchiveStatus,
+    SessionArchivePayload,
+    SessionRecord,
+)
 from ideaos_agent.domain.errors import SessionNotFoundError
 from ideaos_agent.domain.session import (
     SessionClarificationRecord,
@@ -46,6 +53,22 @@ class InMemoryArchiveStore:
             items = items[:limit]
         return items
 
+    def delete_session_records(self, *, root_session_id: str) -> int:
+        keys_to_delete = [
+            session_id
+            for session_id, record in self.records.items()
+            if record.root_session_id == root_session_id
+        ]
+        for session_id in keys_to_delete:
+            del self.records[session_id]
+        return len(keys_to_delete)
+
+    def delete_session_record(self, session_id: str) -> bool:
+        if session_id not in self.records:
+            return False
+        del self.records[session_id]
+        return True
+
 
 class InMemorySnapshotStore:
     """Simple snapshot store for history-service unit tests."""
@@ -77,10 +100,61 @@ class InMemorySnapshotStore:
             items = items[:limit]
         return items
 
+    def delete_session_snapshots(self, *, root_session_id: str) -> int:
+        keys_to_delete = [
+            session_id
+            for session_id, snapshot in self.snapshots.items()
+            if snapshot.root_session_id == root_session_id
+        ]
+        for session_id in keys_to_delete:
+            del self.snapshots[session_id]
+        return len(keys_to_delete)
+
+    def delete_session_snapshot(self, session_id: str) -> bool:
+        if session_id not in self.snapshots:
+            return False
+        del self.snapshots[session_id]
+        return True
+
+
+class InMemoryArchiver:
+    """Simple delete-capable archiver for history-service unit tests."""
+
+    def __init__(self) -> None:
+        self.deleted_urls: list[str] = []
+        self.probe_results: dict[str, bool | None] = {}
+        self.probe_failures: dict[str, str] = {}
+
+    def archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
+        del payload
+        raise AssertionError("History service tests should not call archive_session.")
+
+    def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
+        self.deleted_urls.append(archive_url)
+        return ArchiveDeleteResult(
+            archive_url=archive_url,
+            deleted=True,
+            archive_error=None,
+        )
+
+    def probe_archive(self, archive_url: str) -> ArchiveProbeResult:
+        if archive_url in self.probe_failures:
+            return ArchiveProbeResult(
+                archive_url=archive_url,
+                found=None,
+                archive_error=self.probe_failures[archive_url],
+            )
+        return ArchiveProbeResult(
+            archive_url=archive_url,
+            found=self.probe_results.get(archive_url, True),
+            archive_error=None,
+        )
+
 
 def build_service() -> SessionHistoryService:
     archive_store = InMemoryArchiveStore()
     snapshot_store = InMemorySnapshotStore()
+    archiver = InMemoryArchiver()
 
     root_time = datetime.now(UTC) - timedelta(days=1)
     refine_time = root_time + timedelta(hours=1)
@@ -170,17 +244,15 @@ def build_service() -> SessionHistoryService:
         original_content=root_snapshot.original_content,
         input_echo=refinement_snapshot.input_echo,
         clarification_count=1,
-        archive_status=ArchiveStatus.SUCCEEDED,
-        archive_url="https://feishu.example.com/docx/sess_refine",
+        archive_status=ArchiveStatus.NOT_TRIGGERED,
         completed_at=refine_time,
-        archived_at=refine_time,
         updated_at=refine_time,
     )
 
     composed_snapshot = SessionSnapshot(
         session_id="sess_composed",
         root_session_id="sess_root",
-        parent_session_id="sess_refine",
+        parent_session_id="sess_root",
         session_kind=SessionKind.FULL_PLAN_COMPOSED,
         archive_title="独立开发者产品验证工具优化",
         original_content=root_snapshot.original_content,
@@ -207,7 +279,7 @@ def build_service() -> SessionHistoryService:
     composed_record = SessionRecord(
         session_id="sess_composed",
         root_session_id="sess_root",
-        parent_session_id="sess_refine",
+        parent_session_id="sess_root",
         session_kind=SessionKind.FULL_PLAN_COMPOSED,
         original_content=root_snapshot.original_content,
         input_echo=composed_snapshot.input_echo,
@@ -225,8 +297,10 @@ def build_service() -> SessionHistoryService:
         archive_store.save_session_record(record)
 
     return SessionHistoryService(
+        follow_up_draft_retention_days=7,
         session_archive_store=archive_store,
         session_snapshot_store=snapshot_store,
+        session_archiver=archiver,
     )
 
 
@@ -235,12 +309,12 @@ def test_list_sessions_returns_recent_history_items() -> None:
 
     response = service.list_sessions(limit=10)
 
-    assert len(response.items) == 3
+    assert len(response.items) == 2
     assert response.items[0].session_id == "sess_composed"
     assert response.items[0].root_session_id == "sess_root"
     assert response.items[0].can_continue_follow_up is True
-    assert response.items[1].session_id == "sess_refine"
-    assert response.items[1].can_continue_follow_up is False
+    assert response.items[1].session_id == "sess_root"
+    assert response.items[1].can_continue_follow_up is True
 
 
 def test_get_session_detail_returns_children_and_follow_up_flag() -> None:
@@ -249,9 +323,12 @@ def test_get_session_detail_returns_children_and_follow_up_flag() -> None:
     response = service.get_session_detail("sess_root")
 
     assert response.session_id == "sess_root"
-    assert response.child_session_ids == ["sess_refine"]
+    assert response.child_session_ids == ["sess_composed"]
     assert response.can_continue_follow_up is True
     assert response.analysis is not None
+    assert response.active_follow_up_draft_id == "sess_refine"
+    assert response.active_follow_up_draft_question is not None
+    assert response.active_follow_up_draft_updated_at is not None
 
 
 def test_list_threads_groups_sessions_by_root_session_id() -> None:
@@ -262,7 +339,7 @@ def test_list_threads_groups_sessions_by_root_session_id() -> None:
     assert len(response.items) == 1
     assert response.items[0].root_session_id == "sess_root"
     assert response.items[0].latest_session_id == "sess_composed"
-    assert response.items[0].session_count == 3
+    assert response.items[0].session_count == 2
 
 
 def test_get_thread_returns_sessions_ordered_by_creation_time() -> None:
@@ -273,7 +350,6 @@ def test_get_thread_returns_sessions_ordered_by_creation_time() -> None:
     assert response.root_session_id == "sess_root"
     assert [item.session_id for item in response.items] == [
         "sess_root",
-        "sess_refine",
         "sess_composed",
     ]
 
@@ -287,3 +363,100 @@ def test_get_thread_raises_when_root_is_missing() -> None:
         assert "Thread root session not found" in str(exc)
     else:
         raise AssertionError("Expected SessionNotFoundError for missing thread root.")
+
+
+def test_get_session_detail_prunes_expired_follow_up_draft_cache() -> None:
+    service = build_service()
+    archive_store = service._session_archive_store
+    snapshot_store = service._session_snapshot_store
+    assert isinstance(archive_store, InMemoryArchiveStore)
+    assert isinstance(snapshot_store, InMemorySnapshotStore)
+
+    expired_time = datetime.now(UTC) - timedelta(days=8)
+    draft_snapshot = snapshot_store.get_session_snapshot("sess_refine")
+    draft_record = archive_store.get_session_record("sess_refine")
+    assert draft_snapshot is not None
+    assert draft_record is not None
+
+    snapshot_store.save_session_snapshot(
+        draft_snapshot.model_copy(
+            update={
+                "completed_at": expired_time,
+                "updated_at": expired_time,
+            }
+        )
+    )
+    archive_store.save_session_record(
+        draft_record.model_copy(
+            update={
+                "completed_at": expired_time,
+                "updated_at": expired_time,
+            }
+        )
+    )
+
+    response = service.get_session_detail("sess_root")
+
+    assert response.active_follow_up_draft_id is None
+    assert snapshot_store.get_session_snapshot("sess_refine") is None
+    assert archive_store.get_session_record("sess_refine") is None
+
+
+def test_delete_thread_removes_local_records_and_snapshots() -> None:
+    service = build_service()
+
+    response = service.delete_thread("sess_root")
+
+    assert response.root_session_id == "sess_root"
+    assert response.deleted_session_count == 3
+    assert response.deleted_archive_count == 2
+    assert response.archive_delete_failures == []
+
+    try:
+        service.get_thread("sess_root")
+    except SessionNotFoundError:
+        pass
+    else:
+        raise AssertionError("Expected deleted thread to disappear from history service.")
+
+
+def test_sync_remote_archive_deletions_removes_only_missing_sessions() -> None:
+    service = build_service()
+    archiver = service._session_archiver
+    assert isinstance(archiver, InMemoryArchiver)
+    archiver.probe_results["https://feishu.example.com/docx/sess_root"] = True
+    archiver.probe_results["https://feishu.example.com/docx/sess_composed"] = True
+
+    response = service.sync_remote_archive_deletions()
+
+    assert response.checked_archive_count == 2
+    assert response.removed_session_count == 0
+    assert response.removed_session_ids == []
+    assert response.probe_failures == []
+
+    thread = service.get_thread("sess_root")
+    assert [item.session_id for item in thread.items] == ["sess_root", "sess_composed"]
+
+
+def test_sync_remote_archive_deletions_keeps_local_history_on_probe_error() -> None:
+    service = build_service()
+    archiver = service._session_archiver
+    assert isinstance(archiver, InMemoryArchiver)
+    archiver.probe_failures["https://feishu.example.com/docx/sess_composed"] = (
+        "temporary inspect failure"
+    )
+
+    response = service.sync_remote_archive_deletions()
+
+    assert response.checked_archive_count == 2
+    assert response.removed_session_count == 0
+    assert response.removed_session_ids == []
+    assert len(response.probe_failures) == 1
+    assert response.probe_failures[0].archive_url.endswith("sess_composed")
+    assert response.probe_failures[0].error == "temporary inspect failure"
+
+    thread = service.get_thread("sess_root")
+    assert [item.session_id for item in thread.items] == [
+        "sess_root",
+        "sess_composed",
+    ]

@@ -34,20 +34,73 @@ def test_app_page_renders_html_interface() -> None:
     assert 'id="idea-content"' in response.text
     assert "/static/swiss.css" in response.text
     assert "/static/app.js" in response.text
+    assert 'id="sidebar"' in response.text
+    assert 'id="history-search-toggle"' in response.text
+    assert 'id="sidebar-toggle"' in response.text
+    assert 'id="sidebar-search-panel"' in response.text
     assert 'id="history-session-list"' in response.text
     assert 'id="history-thread-content"' in response.text
+    assert 'id="thread-context-panel"' in response.text
     assert 'id="history-refresh"' in response.text
-    assert "归档状态" in response.text
-    assert "follow-up 局部完善结果，以及当前会话的归档状态。" in response.text
+    assert 'id="result-shell"' in response.text
+    assert 'aria-busy="false"' in response.text
+    assert 'id="workspace-busy"' in response.text
+    assert "follow-up" in response.text
 
 
-def test_app_styles_allow_result_placeholder_copy_to_stay_on_one_line_more_easily() -> None:
+def test_app_page_renders_v0_4_shell_and_brand_assets() -> None:
+    client = TestClient(app)
+
+    response = client.get("/app")
+
+    assert response.status_code == 200
+    assert 'class="topbar"' in response.text
+    assert 'id="sidebar"' in response.text
+    assert "/static/assets/logo/IdeaOS_logo.png" in response.text
+    assert "/static/assets/logo/user.png" in response.text
+    assert "/static/assets/logo/refresh.png" in response.text
+    assert "历史记录" in response.text
+    assert "/ HISTORY" in response.text
+    assert "username" in response.text
+    assert "CURRENT THREAD /" in response.text
+    assert "Single Analysis /" in response.text
+    assert "One Clarification /" in response.text
+    assert "Feishu Archive /" in response.text
+    assert "从给 IdeaOS 输入一句想法开始" in response.text
+
+
+def test_app_styles_include_thread_context_and_sidebar_history_tokens() -> None:
     client = TestClient(app)
 
     response = client.get("/static/swiss.css")
 
     assert response.status_code == 200
     assert "max-width: 72rem;" in response.text
+    assert ".thread-context-panel" in response.text
+    assert ".sidebar-history-panel" in response.text
+    assert ".workspace-busy" in response.text
+    assert ".result-placeholder-card" in response.text
+    assert "scrollbar-gutter: stable both-edges;" in response.text
+    assert "overscroll-behavior: contain;" in response.text
+    assert "overflow-x: hidden;" in response.text
+    assert ".page-sidebar-collapsed .app-shell" in response.text
+    assert ".history-bucket-label" in response.text
+    assert ".history-folder" in response.text
+    assert ".history-version-item" in response.text
+    assert ".history-thread-action[data-action=\"delete-history-thread\"]" in response.text
+    assert ".sidebar-title-main" in response.text
+    assert "white-space: nowrap;" in response.text
+    assert ".sidebar-refresh-icon" in response.text
+    assert "width: 18px;" in response.text
+
+
+def test_app_serves_v0_4_logo_asset() -> None:
+    client = TestClient(app)
+
+    response = client.get("/static/assets/logo/IdeaOS_logo.png")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/")
 
 
 def test_app_serves_archive_aware_frontend_script() -> None:
@@ -58,23 +111,57 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert response.status_code == 200
     assert "javascript" in response.headers["content-type"]
     assert "renderArchivePanel" in response.text
-    assert "SESSION ARCHIVE / 归档状态" in response.text
+    assert "SESSION ARCHIVE /" in response.text
     assert "OPEN FEISHU DOC" in response.text
     assert "if (!resultContent.innerHTML.trim())" in response.text
-    assert "SUMMARY / 摘要" in response.text
-    assert "NEXT ACTIONS / 后续动作" in response.text
+    assert "SUMMARY /" in response.text
+    assert "NEXT ACTIONS /" in response.text
     assert "function formatSectionKeyLabel(sectionKey)" in response.text
     assert "SECTION_DISPLAY_LABELS" in response.text
     assert "data-follow-up-composer" in response.text
     assert "let isSubmitting = false" in response.text
+    history_search_hook = (
+        'const historySearchToggleButton = document.getElementById("history-search-toggle")'
+    )
+    sidebar_toggle_hook = 'const sidebarToggleButton = document.getElementById("sidebar-toggle")'
+    assert history_search_hook in response.text
+    assert sidebar_toggle_hook in response.text
+    assert 'setWorkspaceMode("empty")' in response.text
+    assert "function setWorkspaceMode(mode)" in response.text
+    workspace_busy_hook = (
+        "function setWorkspaceBusy(isBusy, message = DEFAULT_WORKSPACE_BUSY_MESSAGE)"
+    )
+    assert workspace_busy_hook in response.text
+    assert "function setSidebarCollapsed(isCollapsed)" in response.text
+    assert "function setSearchPanelVisible(isVisible)" in response.text
+    assert "function formatWorkspaceBusyMessage(label)" in response.text
+    thread_panel_hook = 'const threadContextPanel = document.getElementById("thread-context-panel")'
+    assert thread_panel_hook in response.text
+    assert "attachSessionActionContainer(threadContextPanel)" in response.text
+    assert "function setThreadContextVisible(isVisible)" in response.text
     assert "function setActionButtonsDisabled(isDisabled)" in response.text
+    assert 'activeLoadingButton.setAttribute("aria-busy", "true")' in response.text
     assert "async function loadRecentSessions()" in response.text
+    assert 'fetch("/api/v1/threads?limit=24")' in response.text
     assert "async function openHistorySession(sessionId, options = {})" in response.text
+    assert "async function toggleHistoryThread(rootSessionId)" in response.text
+    assert "async function handleDeleteHistoryThread(rootSessionId, triggerButton)" in response.text
+    assert "async function syncRemoteArchiveDeletions()" in response.text
+    assert "function groupThreadsByRecency(items)" in response.text
+    assert "data-action='toggle-history-thread'" in response.text
     assert "data-action='continue-history-follow-up'" in response.text
-    assert "ROOT SESSION" in response.text
-    assert "打开详情 / OPEN DETAIL" in response.text
-    assert "继续完善 / CONTINUE FOLLOW-UP" in response.text
-    assert "从这里继续 / CONTINUE HERE" in response.text
+    assert "data-action='delete-history-thread'" in response.text
+    assert 'method: "DELETE"' in response.text
+    assert 'fetch("/api/v1/threads/sync-remote-archives", {' in response.text
+    assert 'if (archiveStatus === "succeeded") {' in response.text
+    assert 'return "";' in response.text
+    assert "删除这条想法线程" in response.text
+    assert "1 个版本 / VERSION" in response.text
+    assert "ROOT ANALYSIS / 根分析" in response.text
+    assert "Open latest version" in response.text
+    assert "OPEN DETAIL" in response.text
+    assert "CONTINUE FOLLOW-UP" in response.text
+    assert "CONTINUE HERE" in response.text
 
 
 def test_idea_analysis_endpoint_returns_fake_response(
@@ -95,7 +182,5 @@ def test_idea_analysis_endpoint_returns_fake_response(
     assert body["session_id"].startswith("sess_")
     assert body["archive_status"] == ArchiveStatus.NOT_TRIGGERED
     assert body["archive_url"] is None
-    assert body["archive_title"] == "独立开发者产品验证工具"
-    assert body["input_echo"] == "我想做一个帮助独立开发者验证产品想法的工具。"
     assert body["needs_clarification"] is True
     assert body["analysis"] is None

@@ -32,6 +32,7 @@ class AppSettings:
     use_fake_llm: bool = False
     use_fake_archive: bool = False
     archive_db_path: str = "data/ideaos_agent.db"
+    follow_up_draft_retention_days: int = 7
     feishu_cli_command: str = "lark-cli"
     feishu_archive_as: str = "user"
     feishu_archive_parent_token: str = ""
@@ -54,6 +55,9 @@ def get_settings() -> AppSettings:
         use_fake_llm=_parse_bool(os.getenv("IDEAOS_USE_FAKE_LLM"), default=False),
         use_fake_archive=_parse_bool(os.getenv("IDEAOS_USE_FAKE_ARCHIVE"), default=False),
         archive_db_path=os.getenv("IDEAOS_ARCHIVE_DB_PATH", "data/ideaos_agent.db"),
+        follow_up_draft_retention_days=int(
+            os.getenv("IDEAOS_FOLLOW_UP_DRAFT_RETENTION_DAYS", "7")
+        ),
         feishu_cli_command=os.getenv("IDEAOS_FEISHU_CLI_COMMAND", "lark-cli"),
         feishu_archive_as=os.getenv("IDEAOS_FEISHU_ARCHIVE_AS", "user"),
         feishu_archive_parent_token=os.getenv("IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN", ""),

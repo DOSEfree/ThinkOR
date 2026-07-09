@@ -193,6 +193,28 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
 
         return [self._row_to_session_record(row) for row in rows]
 
+    def delete_session_records(self, *, root_session_id: str) -> int:
+        """Delete all session index records for one thread."""
+
+        normalized_root_session_id = self._normalize_session_id(root_session_id)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM session_records WHERE root_session_id = ?",
+                (normalized_root_session_id,),
+            )
+        return int(cursor.rowcount)
+
+    def delete_session_record(self, session_id: str) -> bool:
+        """Delete one session index record by ID."""
+
+        normalized_session_id = self._normalize_session_id(session_id)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM session_records WHERE session_id = ?",
+                (normalized_session_id,),
+            )
+        return int(cursor.rowcount) > 0
+
     def save_session_snapshot(self, snapshot: SessionSnapshot) -> SessionSnapshot:
         """Create or update a structured session snapshot while preserving created_at."""
 
@@ -394,6 +416,28 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 )
             )
         return snapshots
+
+    def delete_session_snapshots(self, *, root_session_id: str) -> int:
+        """Delete all structured session snapshots for one thread."""
+
+        normalized_root_session_id = self._normalize_session_id(root_session_id)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM session_snapshots WHERE root_session_id = ?",
+                (normalized_root_session_id,),
+            )
+        return int(cursor.rowcount)
+
+    def delete_session_snapshot(self, session_id: str) -> bool:
+        """Delete one structured session snapshot by ID."""
+
+        normalized_session_id = self._normalize_session_id(session_id)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM session_snapshots WHERE session_id = ?",
+                (normalized_session_id,),
+            )
+        return int(cursor.rowcount) > 0
 
     def _initialize(self) -> None:
         """Ensure the SQLite database and schema exist."""

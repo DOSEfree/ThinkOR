@@ -102,8 +102,6 @@ class SessionRecord(BaseModel):
                 raise ValueError("Follow-up/composed session records require parent_session_id.")
 
         if self.archive_status == ArchiveStatus.NOT_TRIGGERED:
-            if self.completed_at is not None:
-                raise ValueError("NOT_TRIGGERED sessions must not include completed_at.")
             if self.archived_at is not None:
                 raise ValueError("NOT_TRIGGERED sessions must not include archived_at.")
             if self.archive_url is not None:
@@ -283,6 +281,74 @@ class ArchiveResult(BaseModel):
         return self
 
 
+class ArchiveDeleteResult(BaseModel):
+    """Result returned by an archive adapter after one delete attempt."""
+
+    archive_url: str = Field(min_length=1, description="Archive URL targeted for deletion.")
+    deleted: bool = Field(description="Whether the archive is now absent remotely.")
+    archive_error: str | None = Field(
+        default=None,
+        description="Delete error when the remote archive could not be removed.",
+    )
+
+    @field_validator("archive_url", "archive_error")
+    @classmethod
+    def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only optional text values."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Archive delete result text fields must not be blank.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_result_consistency(self) -> "ArchiveDeleteResult":
+        """Keep delete results internally consistent."""
+
+        if self.deleted and self.archive_error is not None:
+            raise ValueError("archive_error is not allowed when deleted is true.")
+        if not self.deleted and self.archive_error is None:
+            raise ValueError("archive_error is required when deleted is false.")
+        return self
+
+
+class ArchiveProbeResult(BaseModel):
+    """Result returned by an archive adapter after probing one remote archive."""
+
+    archive_url: str = Field(min_length=1, description="Archive URL targeted for probing.")
+    found: bool | None = Field(
+        description="True when present, false when definitely missing, null when probe failed.",
+    )
+    archive_error: str | None = Field(
+        default=None,
+        description="Probe error when remote state could not be determined.",
+    )
+
+    @field_validator("archive_url", "archive_error")
+    @classmethod
+    def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank-only optional text values."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Archive probe result text fields must not be blank.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_result_consistency(self) -> "ArchiveProbeResult":
+        """Keep probe results internally consistent."""
+
+        if self.found is None and self.archive_error is None:
+            raise ValueError("archive_error is required when found is null.")
+        if self.found is not None and self.archive_error is not None:
+            raise ValueError("archive_error is only allowed when found is null.")
+        return self
+
+
 class SessionArchiveStore(Protocol):
     """Storage contract for the minimal session archive index."""
 
@@ -301,9 +367,21 @@ class SessionArchiveStore(Protocol):
     ) -> list[SessionRecord]:
         """List session index records for history and thread queries."""
 
+    def delete_session_record(self, session_id: str) -> bool:
+        """Delete one minimal session index record by session ID."""
+
+    def delete_session_records(self, *, root_session_id: str) -> int:
+        """Delete all minimal session index records for one thread."""
+
 
 class SessionArchiver(Protocol):
     """Archive adapter contract for external archive targets."""
 
     def archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
         """Archive one completed session and return the final attempt result."""
+
+    def probe_archive(self, archive_url: str) -> ArchiveProbeResult:
+        """Probe whether one archived document is still present remotely."""
+
+    def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
+        """Delete one archived document remotely when possible."""

@@ -101,10 +101,12 @@ def get_follow_up_session_service() -> FollowUpSessionService:
 
 
 def get_session_history_service() -> SessionHistoryService:
-    """Create the read-only history service for v0.3.0 queries."""
+    """Create the history service for thread queries and deletions."""
 
     settings = get_app_settings()
     return SessionHistoryService(
+        follow_up_draft_retention_days=settings.follow_up_draft_retention_days,
         session_archive_store=get_session_archive_store(settings),
         session_snapshot_store=get_session_snapshot_store(settings),
+        session_archiver=get_session_archiver(settings),
     )

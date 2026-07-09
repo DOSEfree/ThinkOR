@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 
 from ideaos_agent.domain.archive import (
+    ArchiveDeleteResult,
+    ArchiveProbeResult,
     ArchiveResult,
     ArchiveStatus,
     SessionArchivePayload,
@@ -20,4 +22,18 @@ class FakeSessionArchiver(SessionArchiver):
             archive_url=f"https://feishu.example.com/docx/{payload.session_id}",
             archive_error=None,
             archived_at=archived_at,
+        )
+
+    def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
+        return ArchiveDeleteResult(
+            archive_url=archive_url,
+            deleted=True,
+            archive_error=None,
+        )
+
+    def probe_archive(self, archive_url: str) -> ArchiveProbeResult:
+        return ArchiveProbeResult(
+            archive_url=archive_url,
+            found=True,
+            archive_error=None,
         )

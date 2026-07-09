@@ -5,6 +5,8 @@ from ideaos_agent.application.follow_up_session_service import FollowUpSessionSe
 from ideaos_agent.config import AppSettings
 from ideaos_agent.domain.analysis import IdeaAnalysis
 from ideaos_agent.domain.archive import (
+    ArchiveDeleteResult,
+    ArchiveProbeResult,
     ArchiveResult,
     ArchiveStatus,
     SessionArchivePayload,
@@ -62,6 +64,22 @@ class InMemoryArchiveStore:
             items = items[:limit]
         return items
 
+    def delete_session_records(self, *, root_session_id: str) -> int:
+        keys_to_delete = [
+            session_id
+            for session_id, record in self.records.items()
+            if record.root_session_id == root_session_id
+        ]
+        for session_id in keys_to_delete:
+            del self.records[session_id]
+        return len(keys_to_delete)
+
+    def delete_session_record(self, session_id: str) -> bool:
+        if session_id not in self.records:
+            return False
+        del self.records[session_id]
+        return True
+
 
 class InMemorySnapshotStore:
     """Combined snapshot store for follow-up tests."""
@@ -97,6 +115,22 @@ class InMemorySnapshotStore:
             items = items[:limit]
         return items
 
+    def delete_session_snapshots(self, *, root_session_id: str) -> int:
+        keys_to_delete = [
+            session_id
+            for session_id, snapshot in self.snapshots.items()
+            if snapshot.root_session_id == root_session_id
+        ]
+        for session_id in keys_to_delete:
+            del self.snapshots[session_id]
+        return len(keys_to_delete)
+
+    def delete_session_snapshot(self, session_id: str) -> bool:
+        if session_id not in self.snapshots:
+            return False
+        del self.snapshots[session_id]
+        return True
+
 
 class FakeSessionArchiver:
     """Simple archiver used for follow-up service unit tests."""
@@ -111,6 +145,20 @@ class FakeSessionArchiver:
             archive_url=f"https://feishu.example.com/docx/{payload.session_id}",
             archive_error=None,
             archived_at=payload.completed_at,
+        )
+
+    def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
+        return ArchiveDeleteResult(
+            archive_url=archive_url,
+            deleted=True,
+            archive_error=None,
+        )
+
+    def probe_archive(self, archive_url: str) -> ArchiveProbeResult:
+        return ArchiveProbeResult(
+            archive_url=archive_url,
+            found=True,
+            archive_error=None,
         )
 
 
@@ -224,20 +272,18 @@ def test_follow_up_refine_creates_new_session_and_snapshot() -> None:
     assert result.session_id.startswith("sess_")
     assert result.root_session_id == "sess_root"
     assert result.parent_session_id == "sess_root"
-    assert result.archive_status == ArchiveStatus.SUCCEEDED
+    assert result.archive_status == ArchiveStatus.NOT_TRIGGERED
+    assert result.archive_url is None
     persisted_record = archive_store.get_session_record(result.session_id)
     assert persisted_record is not None
     assert persisted_record.root_session_id == "sess_root"
     assert persisted_record.session_kind == SessionKind.FOLLOW_UP_REFINEMENT
+    assert persisted_record.completed_at is not None
     persisted_snapshot = snapshot_store.get_session_snapshot(result.session_id)
     assert persisted_snapshot is not None
     assert persisted_snapshot.root_session_id == "sess_root"
     assert persisted_snapshot.refinement_result is not None
-    assert len(archiver.calls) == 1
-    assert archiver.calls[0].root_session_id == "sess_root"
-    assert archiver.calls[0].root_archive_url == "https://feishu.example.com/docx/sess_root"
-    assert archiver.calls[0].parent_session_id == "sess_root"
-    assert archiver.calls[0].parent_archive_url == "https://feishu.example.com/docx/sess_root"
+    assert len(archiver.calls) == 0
 
 
 def test_follow_up_compose_full_plan_applies_section_updates() -> None:
@@ -281,7 +327,7 @@ def test_follow_up_compose_full_plan_applies_section_updates() -> None:
 
     assert composed.session_id.startswith("sess_")
     assert composed.root_session_id == "sess_root"
-    assert composed.parent_session_id == refine_result.session_id
+    assert composed.parent_session_id == "sess_root"
     assert composed.session_kind == SessionKind.FULL_PLAN_COMPOSED
     assert composed.analysis is not None
     assert composed.analysis.market == "目标用户聚焦为缺少研究资源的独立开发者。"
@@ -289,15 +335,16 @@ def test_follow_up_compose_full_plan_applies_section_updates() -> None:
     assert persisted_record is not None
     assert persisted_record.root_session_id == "sess_root"
     assert persisted_record.session_kind == SessionKind.FULL_PLAN_COMPOSED
+    assert persisted_record.parent_session_id == "sess_root"
     persisted_snapshot = snapshot_store.get_session_snapshot(composed.session_id)
     assert persisted_snapshot is not None
     assert persisted_snapshot.root_session_id == "sess_root"
     assert persisted_snapshot.analysis is not None
-    assert len(archiver.calls) == 2
-    assert archiver.calls[1].root_session_id == "sess_root"
-    assert archiver.calls[1].root_archive_url == "https://feishu.example.com/docx/sess_root"
-    assert archiver.calls[1].parent_session_id == refine_result.session_id
-    assert (
-        archiver.calls[1].parent_archive_url
-        == f"https://feishu.example.com/docx/{refine_result.session_id}"
-    )
+    assert persisted_snapshot.parent_session_id == "sess_root"
+    assert snapshot_store.get_session_snapshot(refine_result.session_id) is None
+    assert archive_store.get_session_record(refine_result.session_id) is None
+    assert len(archiver.calls) == 1
+    assert archiver.calls[0].root_session_id == "sess_root"
+    assert archiver.calls[0].root_archive_url == "https://feishu.example.com/docx/sess_root"
+    assert archiver.calls[0].parent_session_id == "sess_root"
+    assert archiver.calls[0].parent_archive_url == "https://feishu.example.com/docx/sess_root"

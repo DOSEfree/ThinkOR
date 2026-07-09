@@ -5,6 +5,8 @@ from ideaos_agent.application.idea_analysis_service import IdeaAnalysisService
 from ideaos_agent.application.idea_analysis_session_service import IdeaAnalysisSessionService
 from ideaos_agent.config import AppSettings
 from ideaos_agent.domain.archive import (
+    ArchiveDeleteResult,
+    ArchiveProbeResult,
     ArchiveResult,
     ArchiveStatus,
     SessionArchivePayload,
@@ -62,6 +64,22 @@ class InMemorySessionArchiveStore:
             items = items[:limit]
         return items
 
+    def delete_session_records(self, *, root_session_id: str) -> int:
+        keys_to_delete = [
+            session_id
+            for session_id, record in self.records.items()
+            if record.root_session_id == root_session_id
+        ]
+        for session_id in keys_to_delete:
+            del self.records[session_id]
+        return len(keys_to_delete)
+
+    def delete_session_record(self, session_id: str) -> bool:
+        if session_id not in self.records:
+            return False
+        del self.records[session_id]
+        return True
+
 
 class InMemorySessionSnapshotStore:
     """Simple in-memory snapshot store used for session-service unit tests."""
@@ -97,6 +115,22 @@ class InMemorySessionSnapshotStore:
             items = items[:limit]
         return items
 
+    def delete_session_snapshots(self, *, root_session_id: str) -> int:
+        keys_to_delete = [
+            session_id
+            for session_id, snapshot in self.snapshots.items()
+            if snapshot.root_session_id == root_session_id
+        ]
+        for session_id in keys_to_delete:
+            del self.snapshots[session_id]
+        return len(keys_to_delete)
+
+    def delete_session_snapshot(self, session_id: str) -> bool:
+        if session_id not in self.snapshots:
+            return False
+        del self.snapshots[session_id]
+        return True
+
 
 class FakeSessionArchiver:
     """Simple archiver used for session-service unit tests."""
@@ -120,6 +154,20 @@ class FakeSessionArchiver:
             archive_url=f"https://feishu.example.com/docx/{payload.session_id}",
             archive_error=None,
             archived_at=archived_at,
+        )
+
+    def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
+        return ArchiveDeleteResult(
+            archive_url=archive_url,
+            deleted=True,
+            archive_error=None,
+        )
+
+    def probe_archive(self, archive_url: str) -> ArchiveProbeResult:
+        return ArchiveProbeResult(
+            archive_url=archive_url,
+            found=True,
+            archive_error=None,
         )
 
 

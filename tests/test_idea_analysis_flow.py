@@ -195,7 +195,7 @@ def test_session_history_endpoints_return_thread_views(
     sessions_response = client.get("/api/v1/sessions")
     assert sessions_response.status_code == 200
     sessions_body = sessions_response.json()
-    assert len(sessions_body["items"]) >= 3
+    assert len(sessions_body["items"]) >= 2
     assert sessions_body["items"][0]["root_session_id"] == analysis_body["session_id"]
 
     detail_response = client.get(f"/api/v1/sessions/{analysis_body['session_id']}")
@@ -203,7 +203,8 @@ def test_session_history_endpoints_return_thread_views(
     detail_body = detail_response.json()
     assert detail_body["session_id"] == analysis_body["session_id"]
     assert detail_body["can_continue_follow_up"] is True
-    assert refine_body["session_id"] in detail_body["child_session_ids"]
+    assert composed_body["session_id"] in detail_body["child_session_ids"]
+    assert detail_body["active_follow_up_draft_id"] is None
 
     threads_response = client.get("/api/v1/threads")
     assert threads_response.status_code == 200
@@ -217,6 +218,88 @@ def test_session_history_endpoints_return_thread_views(
     assert thread_body["root_session_id"] == analysis_body["session_id"]
     assert [item["session_id"] for item in thread_body["items"]] == [
         analysis_body["session_id"],
-        refine_body["session_id"],
         composed_body["session_id"],
     ]
+
+
+def test_delete_thread_endpoint_removes_local_history_and_archives(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
+    monkeypatch.setenv("IDEAOS_ARCHIVE_DB_PATH", str(tmp_path / "ideaos_agent.db"))
+    client = TestClient(app)
+
+    analysis_response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "I want to build a tool that helps indie developers validate product ideas.",
+            "clarifications": [
+                {
+                    "question": "What is the first thing you want to validate for them?",
+                    "answer": "I want to help them decide whether an idea is worth pursuing.",
+                }
+            ],
+        },
+    )
+    assert analysis_response.status_code == 200
+    analysis_body = analysis_response.json()
+
+    refine_response = client.post(
+        "/api/v1/follow-up/refine",
+        json={
+            "parent_session_id": analysis_body["session_id"],
+            "question": "I want to narrow the target user further.",
+            "clarifications": [],
+        },
+    )
+    assert refine_response.status_code == 200
+
+    delete_response = client.delete(f"/api/v1/threads/{analysis_body['session_id']}")
+    assert delete_response.status_code == 200
+    delete_body = delete_response.json()
+    assert delete_body["root_session_id"] == analysis_body["session_id"]
+    assert delete_body["deleted_session_count"] >= 2
+    assert delete_body["deleted_archive_count"] >= 1
+    assert delete_body["archive_delete_failures"] == []
+
+    thread_response = client.get(f"/api/v1/threads/{analysis_body['session_id']}")
+    assert thread_response.status_code == 404
+
+    sessions_response = client.get("/api/v1/sessions")
+    assert sessions_response.status_code == 200
+    assert sessions_response.json()["items"] == []
+
+
+def test_sync_remote_archives_endpoint_returns_zero_removals_with_fake_archiver(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
+    monkeypatch.setenv("IDEAOS_ARCHIVE_DB_PATH", str(tmp_path / "ideaos_agent.db"))
+    client = TestClient(app)
+
+    analysis_response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "I want to build a tool that helps indie developers validate product ideas.",
+            "clarifications": [
+                {
+                    "question": "What is the first thing you want to validate for them?",
+                    "answer": "I want to help them decide whether an idea is worth pursuing.",
+                }
+            ],
+        },
+    )
+    assert analysis_response.status_code == 200
+
+    sync_response = client.post("/api/v1/threads/sync-remote-archives")
+
+    assert sync_response.status_code == 200
+    sync_body = sync_response.json()
+    assert sync_body["checked_archive_count"] >= 1
+    assert sync_body["removed_session_count"] == 0
+    assert sync_body["removed_session_ids"] == []
+    assert sync_body["probe_failures"] == []

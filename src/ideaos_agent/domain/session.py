@@ -167,3 +167,9 @@ class SessionSnapshotStore(Protocol):
         session_kind: SessionKind | None = None,
     ) -> list[SessionSnapshot]:
         """List structured session snapshots for history and thread queries."""
+
+    def delete_session_snapshot(self, session_id: str) -> bool:
+        """Delete one structured session snapshot by session ID."""
+
+    def delete_session_snapshots(self, *, root_session_id: str) -> int:
+        """Delete all structured session snapshots for one thread."""

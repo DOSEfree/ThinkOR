@@ -428,6 +428,102 @@ class ThreadListResponse(BaseModel):
     )
 
 
+class ArchiveDeleteFailure(BaseModel):
+    """One remote archive that could not be deleted cleanly."""
+
+    archive_url: str = Field(min_length=1, description="Archive URL that failed to delete.")
+    error: str = Field(min_length=1, description="Human-readable delete error.")
+
+    @field_validator("archive_url", "error")
+    @classmethod
+    def validate_required_text_not_blank(cls, value: str) -> str:
+        """Reject blank-only required text values."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Archive delete failure fields must not be blank.")
+        return normalized
+
+
+class ArchiveProbeFailure(BaseModel):
+    """One remote archive whose presence could not be determined cleanly."""
+
+    archive_url: str = Field(min_length=1, description="Archive URL that failed to probe.")
+    error: str = Field(min_length=1, description="Human-readable probe error.")
+
+    @field_validator("archive_url", "error")
+    @classmethod
+    def validate_required_text_not_blank(cls, value: str) -> str:
+        """Reject blank-only required text values."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Archive probe failure fields must not be blank.")
+        return normalized
+
+
+class ArchiveSyncResponse(BaseModel):
+    """Response returned after syncing local history with remote archive absence."""
+
+    checked_archive_count: int = Field(
+        ge=0,
+        description="Number of archived sessions whose remote archive state was checked.",
+    )
+    removed_session_count: int = Field(
+        ge=0,
+        description="Number of local sessions removed because their remote archive was missing.",
+    )
+    removed_session_ids: list[str] = Field(
+        default_factory=list,
+        description="Session IDs removed from local history during this sync.",
+    )
+    probe_failures: list[ArchiveProbeFailure] = Field(
+        default_factory=list,
+        description="Remote archive probes that failed and therefore did not mutate local history.",
+    )
+
+    @field_validator("removed_session_ids")
+    @classmethod
+    def validate_removed_session_ids(cls, value: list[str]) -> list[str]:
+        """Reject blank-only removed session identifiers."""
+
+        normalized_ids: list[str] = []
+        for item in value:
+            normalized = item.strip()
+            if not normalized:
+                raise ValueError("removed_session_ids must not contain blank values.")
+            normalized_ids.append(normalized)
+        return normalized_ids
+
+
+class ThreadDeleteResponse(BaseModel):
+    """Response returned after deleting one local thread and its linked archives."""
+
+    root_session_id: str = Field(min_length=1, description="Deleted root session ID.")
+    deleted_session_count: int = Field(
+        ge=1,
+        description="Number of local sessions removed from this thread.",
+    )
+    deleted_archive_count: int = Field(
+        ge=0,
+        description="Number of Feishu archives deleted successfully.",
+    )
+    archive_delete_failures: list[ArchiveDeleteFailure] = Field(
+        default_factory=list,
+        description="Remote archive deletions that failed but did not block local cleanup.",
+    )
+
+    @field_validator("root_session_id")
+    @classmethod
+    def validate_root_not_blank(cls, value: str) -> str:
+        """Reject blank-only root session identifiers."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("root_session_id must not be blank.")
+        return normalized
+
+
 class SessionDetailResponse(BaseModel):
     """Detailed history response for one session."""
 
@@ -478,6 +574,18 @@ class SessionDetailResponse(BaseModel):
         default_factory=list,
         description="Immediate children that continue from this session.",
     )
+    active_follow_up_draft_id: str | None = Field(
+        default=None,
+        description="Latest recoverable follow-up draft ID under this formal session.",
+    )
+    active_follow_up_draft_question: str | None = Field(
+        default=None,
+        description="Latest recoverable follow-up draft question, if one exists.",
+    )
+    active_follow_up_draft_updated_at: datetime | None = Field(
+        default=None,
+        description="Latest update time for the recoverable follow-up draft, if any.",
+    )
 
     @field_validator(
         "session_id",
@@ -488,6 +596,8 @@ class SessionDetailResponse(BaseModel):
         "original_content",
         "input_echo",
         "follow_up_question",
+        "active_follow_up_draft_id",
+        "active_follow_up_draft_question",
     )
     @classmethod
     def validate_detail_text_not_blank(cls, value: str | None) -> str | None:
