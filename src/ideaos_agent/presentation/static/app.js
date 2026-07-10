@@ -23,11 +23,15 @@ const resultContent = document.getElementById("result-content");
 
 let currentSessionId = null;
 let currentView = null;
+let currentSessionContext = null;
 let selectedHistorySessionId = null;
 let selectedThreadRootSessionId = null;
 let isSubmitting = false;
 let activeLoadingButton = null;
 let historyThreadSummaries = [];
+let historyScrollIndicatorTimeoutId = null;
+let historySearchDebounceTimeoutId = null;
+let currentHistorySearchQuery = "";
 
 const expandedHistoryRootIds = new Set();
 const historyThreadCache = new Map();
@@ -114,6 +118,7 @@ function initializeUi() {
   setSidebarCollapsed(false);
   setSearchPanelVisible(false);
   setWorkspaceMode("empty");
+  initializeHistoryScrollIndicator();
 
   if (historySearchToggleButton instanceof HTMLButtonElement) {
     historySearchToggleButton.addEventListener("click", () => {
@@ -128,6 +133,26 @@ function initializeUi() {
     });
   }
 
+  if (sidebarSearchInput instanceof HTMLInputElement) {
+    sidebarSearchInput.addEventListener("input", () => {
+      if (isSubmitting) {
+        return;
+      }
+      scheduleHistorySearch(sidebarSearchInput.value);
+    });
+
+    sidebarSearchInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      if (!sidebarSearchInput.value) {
+        return;
+      }
+      sidebarSearchInput.value = "";
+      scheduleHistorySearch("");
+    });
+  }
+
   if (sidebarToggleButton instanceof HTMLButtonElement) {
     sidebarToggleButton.addEventListener("click", () => {
       const shouldCollapse = !document.body.classList.contains("page-sidebar-collapsed");
@@ -137,6 +162,23 @@ function initializeUi() {
       setSidebarCollapsed(shouldCollapse);
     });
   }
+}
+
+function initializeHistoryScrollIndicator() {
+  if (!(historySessionList instanceof HTMLElement)) {
+    return;
+  }
+
+  historySessionList.addEventListener("scroll", () => {
+    historySessionList.classList.add("is-scrolling");
+    if (historyScrollIndicatorTimeoutId !== null) {
+      window.clearTimeout(historyScrollIndicatorTimeoutId);
+    }
+    historyScrollIndicatorTimeoutId = window.setTimeout(() => {
+      historySessionList.classList.remove("is-scrolling");
+      historyScrollIndicatorTimeoutId = null;
+    }, 720);
+  });
 }
 
 if (historyRefreshButton instanceof HTMLButtonElement) {
@@ -490,6 +532,14 @@ function attachSessionActionContainer(container) {
       return;
     }
 
+    if (target.matches("[data-action='delete-history-session']")) {
+      const sessionId = target.getAttribute("data-session-id");
+      if (sessionId) {
+        await handleDeleteHistorySession(sessionId, target);
+      }
+      return;
+    }
+
     if (target.matches("[data-action='delete-history-thread']")) {
       const rootSessionId = target.getAttribute("data-root-session-id");
       if (rootSessionId) {
@@ -500,6 +550,7 @@ function attachSessionActionContainer(container) {
 }
 
 async function refreshHistoryAfterMutation(payload) {
+  currentSessionContext = extractSessionContext(payload);
   await loadRecentSessions();
 
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
@@ -523,24 +574,30 @@ async function loadRecentSessions() {
     return;
   }
 
+  const normalizedQuery = normalizeHistorySearchQuery(currentHistorySearchQuery);
   historySessionList.innerHTML = "<p class=\"history-empty\">Loading history...</p>";
 
   try {
-    const response = await fetch("/api/v1/threads?limit=24");
+    const requestPath = buildHistoryThreadsRequestPath(24, normalizedQuery);
+    const response = await fetch(requestPath);
     const data = await response.json().catch(() => ({ items: [] }));
 
     if (!response.ok) {
       historyThreadSummaries = [];
-      historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load history.</p>";
+      historySessionList.innerHTML = normalizedQuery
+        ? "<p class=\"history-empty\">搜索历史失败。 / Failed to search history.</p>"
+        : "<p class=\"history-empty\">Failed to load history.</p>";
       return;
     }
 
     const items = Array.isArray(data.items) ? data.items : [];
     historyThreadSummaries = items;
-    renderHistorySessionList(items);
+    renderHistorySessionList(items, normalizedQuery);
   } catch (_error) {
     historyThreadSummaries = [];
-    historySessionList.innerHTML = "<p class=\"history-empty\">Failed to load history.</p>";
+    historySessionList.innerHTML = normalizedQuery
+      ? "<p class=\"history-empty\">搜索历史失败。 / Failed to search history.</p>"
+      : "<p class=\"history-empty\">Failed to load history.</p>";
   }
 }
 
@@ -628,6 +685,7 @@ async function openHistorySession(sessionId, options = {}) {
     selectedHistorySessionId = data.session_id;
     selectedThreadRootSessionId = data.root_session_id;
     currentSessionId = typeof data.session_id === "string" ? data.session_id : currentSessionId;
+    currentSessionContext = extractSessionContext(data);
     expandedHistoryRootIds.add(data.root_session_id);
     historyThreadLoadErrors.delete(data.root_session_id);
     historyThreadCache.delete(data.root_session_id);
@@ -645,13 +703,15 @@ async function openHistorySession(sessionId, options = {}) {
   }
 }
 
-function renderHistorySessionList(items) {
+function renderHistorySessionList(items, query = currentHistorySearchQuery) {
   if (!(historySessionList instanceof HTMLElement)) {
     return;
   }
 
   if (!Array.isArray(items) || !items.length) {
-    historySessionList.innerHTML = "<p class=\"history-empty\">No completed local threads yet.</p>";
+    historySessionList.innerHTML = normalizeHistorySearchQuery(query)
+      ? "<p class=\"history-empty\">未找到匹配的历史想法。 / No matching ideas found.</p>"
+      : "<p class=\"history-empty\">No completed local threads yet.</p>";
     return;
   }
 
@@ -723,6 +783,8 @@ function renderHistoryThreadSummary(item) {
   const versionsLabel = sessionCount === 1 ? "1 个版本 / VERSION" : `${sessionCount} 个版本 / VERSIONS`;
   const children = renderHistoryThreadChildren(item.root_session_id);
   const archiveBadge = renderHistoryArchiveBadge(item.latest_archive_status);
+  const fullTitle = item.root_archive_title || "Untitled Thread";
+  const displayTitle = truncateHistoryCardTitle(fullTitle);
 
   return `
     <article class="history-folder ${isActive ? "is-active" : ""}">
@@ -738,10 +800,10 @@ function renderHistoryThreadSummary(item) {
           ${isExpanded ? "▾" : "▸"}
         </button>
         <div class="history-folder-copy">
-          <h3 class="history-item-title">${escapeHtml(item.root_archive_title || "Untitled Thread")}</h3>
-          <div class="history-folder-summary">
+          <h3 class="history-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(displayTitle)}</h3>
+          <div class="history-folder-meta">
             <span class="history-count-badge">${escapeHtml(versionsLabel)}</span>
-            <p class="history-item-copy">Latest ${escapeHtml(formatDateTime(item.latest_updated_at))}</p>
+            <p class="history-item-copy history-folder-updated">Latest ${escapeHtml(formatDateTime(item.latest_updated_at))}</p>
           </div>
         </div>
         <div class="history-folder-actions">
@@ -818,13 +880,11 @@ function renderHistoryThreadChildren(rootSessionId) {
 function renderHistoryVersionItem(item, index) {
   const isActive = item.session_id === selectedHistorySessionId;
   const archiveBadge = renderHistoryArchiveBadge(item.archive_status);
-  const versionIndexLabel = `V${String(index + 1).padStart(2, "0")}`;
-  const versionLabel = item.session_id === item.root_session_id
-    ? `${versionIndexLabel} ROOT`
-    : versionIndexLabel;
-  const kindLabel = item.session_id === item.root_session_id
-    ? "ROOT ANALYSIS / 根分析"
-    : formatSessionKindLabel(item.session_kind);
+  const versionLabel = formatFormalVersionLabel(item, index + 1);
+  const relationshipLabel = formatParentFormalVersionLabel(item.parent_formal_version_number);
+  const relationshipCopy = relationshipLabel
+    ? `<p class="history-item-copy history-version-relationship">${escapeHtml(relationshipLabel)}</p>`
+    : "";
 
   return `
     <article class="history-version-item ${isActive ? "is-active" : ""}">
@@ -832,9 +892,9 @@ function renderHistoryVersionItem(item, index) {
         <div class="history-version-copy">
           <div class="history-version-headline">
             <div class="history-version-order">${escapeHtml(versionLabel)}</div>
-            <p class="history-item-copy">${escapeHtml(kindLabel)}</p>
             ${archiveBadge}
           </div>
+          ${relationshipCopy}
           <p class="history-item-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
         </div>
         <div class="history-version-actions">
@@ -848,19 +908,116 @@ function renderHistoryVersionItem(item, index) {
           >
             ↗
           </button>
-          <button
-            class="history-icon-button history-icon-button-placeholder"
-            type="button"
-            disabled
-            aria-label="版本删除占位"
-            title="当前仅支持按想法线程整体删除，单版本删除后续再接入。"
-          >
-            ×
-          </button>
+          ${renderHistoryVersionDeleteAction(item)}
         </div>
       </div>
     </article>
   `;
+}
+
+function renderHistoryVersionDeleteAction(item) {
+  if (!item || item.session_id === item.root_session_id) {
+    return "";
+  }
+
+  const deleteBlockReason = typeof item.delete_block_reason === "string"
+    ? item.delete_block_reason
+    : "Only leaf versions can be deleted individually.";
+  if (item.can_delete_leaf === true) {
+    return `
+      <button
+        class="history-icon-button history-icon-button-danger"
+        type="button"
+        data-action="delete-history-session"
+        data-session-id="${escapeHtml(item.session_id)}"
+        aria-label="删除这个版本"
+        title="删除这个 formal 叶子版本，并级联清理挂在它下面的本地 draft / Delete version"
+      >
+        ×
+      </button>
+    `;
+  }
+
+  return `
+    <button
+      class="history-icon-button history-icon-button-disabled"
+      type="button"
+      aria-disabled="true"
+      tabindex="-1"
+      aria-label="${escapeHtml(deleteBlockReason)}"
+      title="${escapeHtml(deleteBlockReason)}"
+    >
+      ×
+    </button>
+  `;
+}
+
+async function handleDeleteHistorySession(sessionId, triggerButton) {
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!normalizedSessionId) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Delete this formal leaf version from local SQLite and clean any attached local follow-up drafts?",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  setLoadingState(true, "DELETE VERSION", triggerButton);
+  clearFeedback();
+
+  try {
+    const response = await fetch(`/api/v1/sessions/${encodeURIComponent(normalizedSessionId)}`, {
+      method: "DELETE",
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      renderApiError(data, "Failed to delete version.");
+      return;
+    }
+
+    const rootSessionId = typeof data.root_session_id === "string" ? data.root_session_id : "";
+    const parentSessionId = typeof data.parent_session_id === "string"
+      ? data.parent_session_id
+      : "";
+    const deletedSessionIds = Array.isArray(data.deleted_session_ids)
+      ? data.deleted_session_ids.filter((item) => typeof item === "string" && item.trim())
+      : [];
+    const shouldFallbackToParent = shouldFallbackAfterLeafDelete(deletedSessionIds);
+
+    if (rootSessionId) {
+      invalidateHistoryThreadState(rootSessionId);
+    }
+    await loadRecentSessions();
+
+    if (shouldFallbackToParent && parentSessionId) {
+      await openHistorySession(parentSessionId);
+    } else if (
+      rootSessionId
+      && (
+        selectedThreadRootSessionId === rootSessionId
+        || expandedHistoryRootIds.has(rootSessionId)
+      )
+    ) {
+      await loadThreadView(rootSessionId);
+    }
+
+    const failures = Array.isArray(data.archive_delete_failures)
+      ? data.archive_delete_failures
+      : [];
+    if (failures.length) {
+      window.alert(
+        `Local version deleted, but ${failures.length} linked Feishu archive(s) could not be removed.`,
+      );
+    }
+  } catch (_error) {
+    renderError("Failed to delete version.");
+  } finally {
+    setLoadingState(false, "分析 / ANALYZE", triggerButton);
+  }
 }
 
 async function handleDeleteHistoryThread(rootSessionId, triggerButton) {
@@ -913,9 +1070,7 @@ function clearDeletedThreadState(rootSessionId) {
     (item) => item.root_session_id !== rootSessionId,
   );
   expandedHistoryRootIds.delete(rootSessionId);
-  historyThreadCache.delete(rootSessionId);
-  historyThreadLoadErrors.delete(rootSessionId);
-  loadingHistoryRootIds.delete(rootSessionId);
+  invalidateHistoryThreadState(rootSessionId);
 
   if (selectedThreadRootSessionId === rootSessionId) {
     clearResult();
@@ -980,11 +1135,35 @@ function renderThreadView(payload) {
   }
 
   const rootTitle = items[0].archive_title || "Untitled Thread";
+  const threadContextMeta = buildThreadContextMeta(items, payload.root_session_id || "");
   setThreadContextVisible(true);
   historyThreadContent.innerHTML = `
     <section class="thread-panel-headline">
       <div class="assumptions-label">THREAD ROOT / 根链路</div>
       <h3 class="thread-title">${escapeHtml(rootTitle)}</h3>
+      <div class="thread-context-grid">
+        <article class="thread-context-stat">
+          <div class="archive-meta-label">ROOT VERSION</div>
+          <div class="thread-context-value">${escapeHtml(threadContextMeta.rootLabel)}</div>
+        </article>
+        <article class="thread-context-stat">
+          <div class="archive-meta-label">PARENT</div>
+          <div class="thread-context-value">${escapeHtml(threadContextMeta.parentLabel)}</div>
+        </article>
+        <article class="thread-context-stat">
+          <div class="archive-meta-label">CURRENT</div>
+          <div class="thread-context-value">${escapeHtml(threadContextMeta.currentLabel)}</div>
+        </article>
+        <article class="thread-context-stat thread-context-stat-wide">
+          <div class="archive-meta-label">CURRENT CHAIN</div>
+          <div class="thread-context-value">${escapeHtml(threadContextMeta.chainLabel)}</div>
+        </article>
+      </div>
+      <p class="thread-meta-copy">
+        Linear sidebar order stays global. Relationship markers such as
+        <span class="thread-inline-emphasis">from V01</span>
+        show the actual parent version.
+      </p>
       <p class="thread-meta-copy">Root session ${escapeHtml(payload.root_session_id || "")}</p>
       <p class="thread-meta-copy">Contains ${escapeHtml(String(items.length))} session nodes.</p>
     </section>
@@ -997,6 +1176,11 @@ function renderThreadView(payload) {
 function renderThreadItem(item) {
   const isActive = item.session_id === selectedHistorySessionId;
   const archiveBadge = renderHistoryArchiveBadge(item.archive_status);
+  const versionLabel = formatFormalVersionLabel(item);
+  const relationshipLabel = formatParentFormalVersionLabel(item.parent_formal_version_number);
+  const relationshipCopy = relationshipLabel
+    ? `<span class="thread-version-link">${escapeHtml(relationshipLabel)}</span>`
+    : "";
   const continueAction = item.can_continue_follow_up
     ? `
       <button
@@ -1014,6 +1198,10 @@ function renderThreadItem(item) {
     <article class="thread-item ${isActive ? "is-active" : ""}">
       <div class="thread-item-head">
         <div>
+          <div class="thread-item-version-row">
+            <div class="history-version-order thread-version-order">${escapeHtml(versionLabel)}</div>
+            ${relationshipCopy}
+          </div>
           <h3 class="thread-item-title">${escapeHtml(item.archive_title || "Untitled Session")}</h3>
           <p class="thread-meta-copy">${escapeHtml(formatSessionKindLabel(item.session_kind))}</p>
         </div>
@@ -1039,6 +1227,7 @@ function renderThreadItem(item) {
 function renderHistoryDetail(detail) {
   const sessionKind = typeof detail.session_kind === "string" ? detail.session_kind : "analysis";
   const clarifications = Array.isArray(detail.clarifications) ? detail.clarifications : [];
+  currentSessionContext = extractSessionContext(detail);
 
   if (sessionKind === "analysis") {
     currentView = {
@@ -1277,28 +1466,38 @@ function renderRefinementView(payload) {
       </div>
       <div class="analysis-grid">
         <section class="analysis-section analysis-span-12">
-          <div class="analysis-index">01</div>
-          <h3 class="analysis-title">QUESTION SUMMARY / 问题摘要</h3>
+          <div class="analysis-heading">
+            <div class="analysis-index">01</div>
+            <h3 class="analysis-title">QUESTION SUMMARY / 问题摘要</h3>
+          </div>
           <p class="analysis-copy">${escapeHtml(refinement.question_summary || "N/A")}</p>
         </section>
         <section class="analysis-section analysis-span-12">
-          <div class="analysis-index">02</div>
-          <h3 class="analysis-title">REFINEMENT ANSWER / 局部完善回答</h3>
+          <div class="analysis-heading">
+            <div class="analysis-index">02</div>
+            <h3 class="analysis-title">REFINEMENT ANSWER / 局部完善回答</h3>
+          </div>
           <p class="analysis-copy">${escapeHtml(refinement.refinement_answer || "N/A")}</p>
         </section>
         <section class="analysis-section analysis-span-12">
-          <div class="analysis-index">03</div>
-          <h3 class="analysis-title">AFFECTED SECTIONS / 受影响板块</h3>
+          <div class="analysis-heading">
+            <div class="analysis-index">03</div>
+            <h3 class="analysis-title">AFFECTED SECTIONS / 受影响板块</h3>
+          </div>
           ${renderArrayBlock(affectedSections)}
         </section>
         <section class="analysis-section analysis-span-12">
-          <div class="analysis-index">04</div>
-          <h3 class="analysis-title">PROPOSED SECTION UPDATES / 建议修改内容</h3>
+          <div class="analysis-heading">
+            <div class="analysis-index">04</div>
+            <h3 class="analysis-title">PROPOSED SECTION UPDATES / 建议修改内容</h3>
+          </div>
           ${renderSectionUpdates(updates)}
         </section>
         <section class="analysis-section analysis-span-12">
-          <div class="analysis-index">05</div>
-          <h3 class="analysis-title">NEXT ACTIONS / 后续动作</h3>
+          <div class="analysis-heading">
+            <div class="analysis-index">05</div>
+            <h3 class="analysis-title">NEXT ACTIONS / 后续动作</h3>
+          </div>
           <ul class="analysis-list">${nextActions}</ul>
         </section>
       </div>
@@ -1498,8 +1697,10 @@ function renderAnalysisGrid(analysis) {
       const content = kind === "list" ? renderArrayBlock(value) : renderCopyBlock(value);
       return `
         <section class="analysis-section ${spanClass}">
-          <div class="analysis-index">${index}</div>
-          <h3 class="analysis-title">${title}</h3>
+          <div class="analysis-heading">
+            <div class="analysis-index">${index}</div>
+            <h3 class="analysis-title">${title}</h3>
+          </div>
           ${content}
         </section>
       `;
@@ -1687,6 +1888,165 @@ function renderHistoryArchiveBadge(archiveStatus) {
   `;
 }
 
+function extractSessionContext(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
+  const rootSessionId = typeof payload.root_session_id === "string" ? payload.root_session_id : "";
+  if (!sessionId || !rootSessionId) {
+    return null;
+  }
+
+  return {
+    sessionId,
+    rootSessionId,
+    parentSessionId: typeof payload.parent_session_id === "string"
+      ? payload.parent_session_id
+      : null,
+    sessionKind: typeof payload.session_kind === "string" ? payload.session_kind : "analysis",
+    formalVersionNumber: resolvePositiveInteger(payload.formal_version_number),
+    parentFormalVersionNumber: resolvePositiveInteger(payload.parent_formal_version_number),
+  };
+}
+
+function resolvePositiveInteger(value) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0) {
+    return null;
+  }
+  return number;
+}
+
+function formatFormalVersionShort(value, fallbackNumber = null) {
+  const resolved = resolvePositiveInteger(value) ?? resolvePositiveInteger(fallbackNumber);
+  if (resolved === null) {
+    return "V??";
+  }
+  return `V${String(resolved).padStart(2, "0")}`;
+}
+
+function formatFormalVersionLabel(item, fallbackNumber = null) {
+  const shortLabel = formatFormalVersionShort(item.formal_version_number, fallbackNumber);
+  return item.session_id === item.root_session_id ? `${shortLabel} ROOT` : shortLabel;
+}
+
+function formatParentFormalVersionLabel(parentFormalVersionNumber) {
+  const resolved = resolvePositiveInteger(parentFormalVersionNumber);
+  if (resolved === null) {
+    return "";
+  }
+  return `from ${formatFormalVersionShort(resolved)}`;
+}
+
+function buildThreadContextMeta(items, rootSessionId) {
+  const itemsById = new Map(
+    items
+      .filter((item) => item && typeof item.session_id === "string")
+      .map((item) => [item.session_id, item]),
+  );
+  const rootItem = itemsById.get(rootSessionId) || items[0] || null;
+  const rootLabel = rootItem ? formatFormalVersionLabel(rootItem, 1) : "V01 ROOT";
+
+  return {
+    rootLabel,
+    parentLabel: formatCurrentParentLabel(currentSessionContext, itemsById),
+    currentLabel: formatCurrentSessionLabel(currentSessionContext, itemsById),
+    chainLabel: formatCurrentChainLabel(currentSessionContext, itemsById),
+  };
+}
+
+function formatCurrentSessionLabel(sessionContext, itemsById) {
+  if (!sessionContext) {
+    return "N/A";
+  }
+  if (sessionContext.sessionKind === "follow_up_refinement") {
+    const parentShort = sessionContext.parentFormalVersionNumber !== null
+      ? formatFormalVersionShort(sessionContext.parentFormalVersionNumber)
+      : null;
+    return parentShort ? `LOCAL DRAFT FROM ${parentShort}` : "LOCAL DRAFT";
+  }
+
+  const currentItem = itemsById.get(sessionContext.sessionId);
+  if (currentItem) {
+    return formatFormalVersionLabel(currentItem);
+  }
+  if (sessionContext.formalVersionNumber !== null) {
+    const shortLabel = formatFormalVersionShort(sessionContext.formalVersionNumber);
+    return sessionContext.sessionId === sessionContext.rootSessionId
+      ? `${shortLabel} ROOT`
+      : shortLabel;
+  }
+  return "N/A";
+}
+
+function formatCurrentParentLabel(sessionContext, itemsById) {
+  if (!sessionContext || !sessionContext.parentSessionId) {
+    return "N/A";
+  }
+
+  const parentItem = itemsById.get(sessionContext.parentSessionId);
+  if (parentItem) {
+    return formatFormalVersionLabel(parentItem);
+  }
+  if (sessionContext.parentFormalVersionNumber !== null) {
+    return formatFormalVersionShort(sessionContext.parentFormalVersionNumber);
+  }
+  return "N/A";
+}
+
+function formatCurrentChainLabel(sessionContext, itemsById) {
+  if (!sessionContext) {
+    return "N/A";
+  }
+
+  const anchorSessionId = sessionContext.sessionKind === "follow_up_refinement"
+    ? sessionContext.parentSessionId
+    : sessionContext.sessionId;
+  const chainItems = [];
+  const visitedSessionIds = new Set();
+  let cursorSessionId = anchorSessionId;
+
+  while (
+    cursorSessionId
+    && itemsById.has(cursorSessionId)
+    && !visitedSessionIds.has(cursorSessionId)
+  ) {
+    visitedSessionIds.add(cursorSessionId);
+    const item = itemsById.get(cursorSessionId);
+    chainItems.push(item);
+    cursorSessionId = item.parent_session_id || null;
+  }
+
+  const chainLabels = chainItems.reverse().map((item) => formatFormalVersionLabel(item));
+  if (sessionContext.sessionKind === "follow_up_refinement") {
+    const parentShort = sessionContext.parentFormalVersionNumber !== null
+      ? formatFormalVersionShort(sessionContext.parentFormalVersionNumber)
+      : null;
+    chainLabels.push(parentShort ? `DRAFT FROM ${parentShort}` : "LOCAL DRAFT");
+  }
+
+  if (!chainLabels.length) {
+    return formatCurrentSessionLabel(sessionContext, itemsById);
+  }
+  return chainLabels.join(" -> ");
+}
+
+function truncateHistoryCardTitle(title, maxLength = 10) {
+  const normalized = typeof title === "string" ? title.trim() : "";
+  if (!normalized) {
+    return "Untitled Thread";
+  }
+
+  const characters = Array.from(normalized);
+  if (characters.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${characters.slice(0, maxLength).join("")}…`;
+}
+
 function formatDateTime(value) {
   if (typeof value !== "string" || !value) {
     return "N/A";
@@ -1781,6 +2141,64 @@ function setSearchPanelVisible(isVisible) {
   }
 }
 
+function scheduleHistorySearch(query) {
+  currentHistorySearchQuery = normalizeHistorySearchQuery(query);
+  if (historySearchDebounceTimeoutId !== null) {
+    window.clearTimeout(historySearchDebounceTimeoutId);
+  }
+  historySearchDebounceTimeoutId = window.setTimeout(() => {
+    historySearchDebounceTimeoutId = null;
+    void loadRecentSessions();
+  }, 180);
+}
+
+function normalizeHistorySearchQuery(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
+
+function shouldFallbackAfterLeafDelete(deletedSessionIds) {
+  if (!Array.isArray(deletedSessionIds) || !deletedSessionIds.length) {
+    return false;
+  }
+
+  if (
+    currentSessionContext
+    && typeof currentSessionContext.sessionId === "string"
+    && deletedSessionIds.includes(currentSessionContext.sessionId)
+  ) {
+    return true;
+  }
+
+  return typeof selectedHistorySessionId === "string"
+    && deletedSessionIds.includes(selectedHistorySessionId);
+}
+
+function invalidateHistoryThreadState(rootSessionId) {
+  if (typeof rootSessionId !== "string" || !rootSessionId.trim()) {
+    return;
+  }
+
+  historyThreadCache.delete(rootSessionId);
+  historyThreadLoadErrors.delete(rootSessionId);
+  loadingHistoryRootIds.delete(rootSessionId);
+}
+
+function buildHistoryThreadsRequestPath(limit = 24, query = currentHistorySearchQuery) {
+  const normalizedQuery = normalizeHistorySearchQuery(query);
+  if (!normalizedQuery) {
+    return `/api/v1/threads?limit=${encodeURIComponent(String(limit))}`;
+  }
+
+  const params = new URLSearchParams({
+    limit: String(limit),
+    q: normalizedQuery,
+  });
+  return `/api/v1/threads?${params.toString()}`;
+}
+
 function setWorkspaceMode(mode) {
   const isActive = mode === "active";
   document.body.classList.toggle("page-workspace-empty", !isActive);
@@ -1850,6 +2268,7 @@ function showContent() {
 function clearResult() {
   currentSessionId = null;
   currentView = null;
+  currentSessionContext = null;
   selectedHistorySessionId = null;
   selectedThreadRootSessionId = null;
   setWorkspaceMode("empty");
@@ -1900,8 +2319,14 @@ function setLoadingState(isLoading, label, triggerButton) {
 
 function formatWorkspaceBusyMessage(label) {
   const normalizedLabel = String(label || "").toUpperCase();
-  if (normalizedLabel.includes("DELETE")) {
+  if (normalizedLabel.includes("DELETE VERSION")) {
+    return "Deleting this formal version and cleaning any attached local follow-up draft cache.";
+  }
+  if (normalizedLabel.includes("DELETE THREAD")) {
     return "Deleting this history thread and attempting to remove its linked Feishu archives.";
+  }
+  if (normalizedLabel.includes("DELETE")) {
+    return "Deleting local history and attempting to remove any linked Feishu archives.";
   }
   if (normalizedLabel.includes("COMPOSE")) {
     return "Composing a new full plan from the approved refinement. Please keep this workspace open.";

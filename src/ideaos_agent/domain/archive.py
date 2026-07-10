@@ -35,6 +35,11 @@ class SessionRecord(BaseModel):
         default=SessionKind.ANALYSIS,
         description="Kind of session represented by the index record.",
     )
+    formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number inside one root thread.",
+    )
     original_content: str = Field(min_length=1, description="Raw/root idea content.")
     input_echo: str = Field(min_length=1, description="Faithful input echo.")
     clarification_count: int = Field(
@@ -100,6 +105,13 @@ class SessionRecord(BaseModel):
         if self.session_kind != SessionKind.ANALYSIS:
             if self.parent_session_id is None:
                 raise ValueError("Follow-up/composed session records require parent_session_id.")
+        if (
+            self.session_kind == SessionKind.FOLLOW_UP_REFINEMENT
+            and self.formal_version_number is not None
+        ):
+            raise ValueError(
+                "Follow-up refinement session records must not include formal_version_number."
+            )
 
         if self.archive_status == ArchiveStatus.NOT_TRIGGERED:
             if self.archived_at is not None:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ideaos-agent"
-version = "0.2.0"
+version = "0.4.0"
 description = "Idea development system for turning vague ideas into executable plans."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -25,8 +25,7 @@ dev = [
   "pytest>=8.3,<9.0",
   "pytest-cov>=5.0,<6.0",
   "ruff>=0.6,<1.0",
-  "mypy>=1.11,<2.0",
-  "httpx2>=2.5,<3.0"
+  "mypy>=1.11,<2.0"
 ]
 
 [tool.setuptools]

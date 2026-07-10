@@ -38,6 +38,7 @@ def test_app_page_renders_html_interface() -> None:
     assert 'id="history-search-toggle"' in response.text
     assert 'id="sidebar-toggle"' in response.text
     assert 'id="sidebar-search-panel"' in response.text
+    assert 'id="sidebar-search-input"' in response.text
     assert 'id="history-session-list"' in response.text
     assert 'id="history-thread-content"' in response.text
     assert 'id="thread-context-panel"' in response.text
@@ -61,7 +62,7 @@ def test_app_page_renders_v0_4_shell_and_brand_assets() -> None:
     assert "/static/assets/logo/refresh.png" in response.text
     assert "历史记录" in response.text
     assert "/ HISTORY" in response.text
-    assert "username" in response.text
+    assert 'class="topbar-user-value"' in response.text
     assert "CURRENT THREAD /" in response.text
     assert "Single Analysis /" in response.text
     assert "One Clarification /" in response.text
@@ -83,15 +84,34 @@ def test_app_styles_include_thread_context_and_sidebar_history_tokens() -> None:
     assert "scrollbar-gutter: stable both-edges;" in response.text
     assert "overscroll-behavior: contain;" in response.text
     assert "overflow-x: hidden;" in response.text
+    assert "grid-template-columns: minmax(340px, 398px) minmax(0, 1fr);" in response.text
     assert ".page-sidebar-collapsed .app-shell" in response.text
     assert ".history-bucket-label" in response.text
     assert ".history-folder" in response.text
     assert ".history-version-item" in response.text
+    assert ".history-version-item:last-child" in response.text
     assert ".history-thread-action[data-action=\"delete-history-thread\"]" in response.text
+    assert ".history-icon-button-disabled" in response.text
     assert ".sidebar-title-main" in response.text
     assert "white-space: nowrap;" in response.text
+    assert ".history-folder-meta" in response.text
+    assert "font-size: 1.04rem;" in response.text
+    assert "border-radius: 12px;" in response.text
+    assert "text-overflow: ellipsis;" in response.text
+    assert "scrollbar-width: thin;" in response.text
+    assert "scrollbar-color: transparent transparent;" in response.text
+    assert "grid-template-columns: 8px minmax(0, 1fr) auto;" in response.text
+    assert "font-weight: 400;" in response.text
+    assert ".page-sidebar-collapsed #sidebar-toggle .sidebar-icon" in response.text
+    assert "scaleX(-1);" in response.text
+    assert ".analysis-heading" in response.text
+    assert "border-radius: 0;" in response.text
     assert ".sidebar-refresh-icon" in response.text
-    assert "width: 18px;" in response.text
+    assert "width: 14px;" in response.text
+    assert ".thread-context-grid" in response.text
+    assert ".thread-context-stat" in response.text
+    assert ".history-version-relationship" in response.text
+    assert ".thread-item-version-row" in response.text
 
 
 def test_app_serves_v0_4_logo_asset() -> None:
@@ -123,8 +143,12 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     history_search_hook = (
         'const historySearchToggleButton = document.getElementById("history-search-toggle")'
     )
+    history_search_input_hook = (
+        'const sidebarSearchInput = document.getElementById("sidebar-search-input")'
+    )
     sidebar_toggle_hook = 'const sidebarToggleButton = document.getElementById("sidebar-toggle")'
     assert history_search_hook in response.text
+    assert history_search_input_hook in response.text
     assert sidebar_toggle_hook in response.text
     assert 'setWorkspaceMode("empty")' in response.text
     assert "function setWorkspaceMode(mode)" in response.text
@@ -132,8 +156,15 @@ def test_app_serves_archive_aware_frontend_script() -> None:
         "function setWorkspaceBusy(isBusy, message = DEFAULT_WORKSPACE_BUSY_MESSAGE)"
     )
     assert workspace_busy_hook in response.text
+    assert "function initializeHistoryScrollIndicator()" in response.text
+    assert 'historySessionList.classList.add("is-scrolling")' in response.text
     assert "function setSidebarCollapsed(isCollapsed)" in response.text
     assert "function setSearchPanelVisible(isVisible)" in response.text
+    assert "function scheduleHistorySearch(query)" in response.text
+    build_history_path_hook = (
+        "function buildHistoryThreadsRequestPath(limit = 24, query = currentHistorySearchQuery)"
+    )
+    assert build_history_path_hook in response.text
     assert "function formatWorkspaceBusyMessage(label)" in response.text
     thread_panel_hook = 'const threadContextPanel = document.getElementById("thread-context-panel")'
     assert thread_panel_hook in response.text
@@ -142,14 +173,23 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert "function setActionButtonsDisabled(isDisabled)" in response.text
     assert 'activeLoadingButton.setAttribute("aria-busy", "true")' in response.text
     assert "async function loadRecentSessions()" in response.text
-    assert 'fetch("/api/v1/threads?limit=24")' in response.text
+    request_path_hook = "const requestPath = buildHistoryThreadsRequestPath(24, normalizedQuery);"
+    assert request_path_hook in response.text
+    assert "const response = await fetch(requestPath);" in response.text
     assert "async function openHistorySession(sessionId, options = {})" in response.text
     assert "async function toggleHistoryThread(rootSessionId)" in response.text
     assert "async function handleDeleteHistoryThread(rootSessionId, triggerButton)" in response.text
+    assert "async function handleDeleteHistorySession(sessionId, triggerButton)" in response.text
     assert "async function syncRemoteArchiveDeletions()" in response.text
     assert "function groupThreadsByRecency(items)" in response.text
+    assert "function truncateHistoryCardTitle(title, maxLength = 10)" in response.text
+    assert "function extractSessionContext(payload)" in response.text
+    assert "function formatFormalVersionLabel(item, fallbackNumber = null)" in response.text
+    assert "function buildThreadContextMeta(items, rootSessionId)" in response.text
+    assert 'class="analysis-heading"' in response.text
     assert "data-action='toggle-history-thread'" in response.text
     assert "data-action='continue-history-follow-up'" in response.text
+    assert "data-action='delete-history-session'" in response.text
     assert "data-action='delete-history-thread'" in response.text
     assert 'method: "DELETE"' in response.text
     assert 'fetch("/api/v1/threads/sync-remote-archives", {' in response.text
@@ -157,11 +197,16 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert 'return "";' in response.text
     assert "删除这条想法线程" in response.text
     assert "1 个版本 / VERSION" in response.text
-    assert "ROOT ANALYSIS / 根分析" in response.text
+    assert 'historySessionList.classList.remove("is-scrolling")' in response.text
     assert "Open latest version" in response.text
     assert "OPEN DETAIL" in response.text
     assert "CONTINUE FOLLOW-UP" in response.text
     assert "CONTINUE HERE" in response.text
+    assert "CURRENT CHAIN" in response.text
+    assert "ROOT VERSION" in response.text
+    assert "from V01" in response.text
+    assert "function renderHistoryVersionDeleteAction(item)" in response.text
+    assert "Only leaf versions can be deleted individually." in response.text
 
 
 def test_idea_analysis_endpoint_returns_fake_response(

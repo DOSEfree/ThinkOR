@@ -9,7 +9,26 @@
 
 ## [Unreleased]
 
-暂无已确认条目。
+### Added
+
+- Added local-only formal history search for `v0.4.5`: the sidebar search now filters local thread history through `/api/v1/threads?q=...`, matches key local idea fields such as titles, root idea content, and formal summaries, and intentionally excludes follow-up draft cache plus any external search source.
+- Added non-root formal leaf deletion for `v0.4.5`: `DELETE /api/v1/sessions/{session_id}` now removes one formal leaf version, cascade-cleans any attached local follow-up draft cache, best-effort deletes linked Feishu archives, and returns the parent fallback node for the UI.
+
+### Changed
+
+- Aligned package metadata with the released `v0.4.0` state by updating both `pyproject.toml` and `ideaos_agent.__version__` from `0.2.0` to `0.4.0`.
+- Refined the sidebar history presentation for `v0.4.5`: time-bucket labels now follow the updated mockup scale, summary cards use tighter corners with full-wrap shadow, long thread titles truncate after 10 characters with an ellipsis, the `历史记录 / HISTORY` row is vertically centered with the action buttons, and the workspace `IdeaOS-Agent` title uses a lighter weight.
+- Continued the `v0.4.5` frontend polish pass: widened the sidebar without affecting workspace centering, repositioned the thread expand chevron and reserved scrollbar rail space, flipped the collapse icon in collapsed state, kept analysis section indices and titles on one line, converted blue-accent side-strip cards to square corners, simplified expanded version labels to `V01 ROOT / V02`, and softened the success-state status/archive card treatments.
+- Continued the `v0.4.5` sidebar micro-polish pass: unified the five history action buttons to a smaller shared size, enlarged and left-shifted the expand chevron for readability, rebalanced analysis indices with their titles, and moved the scrollbar rail farther right so card shadows read cleanly.
+- Continued the `v0.4.5` sidebar detail polish: bottom-aligned the top history controls with the `历史记录 / HISTORY` title block, unified the `Latest / Updated` metadata treatment, and aligned version badges plus analysis indices more consistently.
+- Locked the `v0.4.5` implementation plan before code work begins: local history search stays local-only and formal-only, node deletion is constrained to non-root leaves, and branch follow-up keeps linear sidebar history with global version increments plus explicit relationship markers.
+- Implemented the `v0.4.5` linear branch follow-up semantics: formal history nodes now persist stable global version numbers in SQLite, expanded sidebar versions expose lightweight parent markers such as `from V01`, and `CURRENT THREAD` now shows explicit `root / parent / current / chain` context without switching the sidebar to a tree-aware layout.
+- Exposed leaf-delete state directly in formal history responses for `v0.4.5`: history items now declare whether a version is individually deletable plus the block reason, so the sidebar can hide ROOT single-delete, disable non-leaf delete, and safely fall back to the parent version after a successful delete.
+
+### Fixed
+
+- Removed the stray `httpx2` dev dependency residue from `pyproject.toml`.
+- Added a metadata regression test so package version drift and `httpx2`-style dependency residue are caught earlier.
 
 ## [0.4.0] - 2026-07-09
 

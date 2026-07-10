@@ -28,7 +28,13 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
         existing = self.get_session_record(record.session_id)
         persisted_record = record
         if existing is not None:
-            persisted_record = record.model_copy(update={"created_at": existing.created_at})
+            update_payload: dict[str, object] = {"created_at": existing.created_at}
+            if (
+                record.formal_version_number is None
+                and existing.formal_version_number is not None
+            ):
+                update_payload["formal_version_number"] = existing.formal_version_number
+            persisted_record = record.model_copy(update=update_payload)
 
         with self._connect() as connection:
             if existing is None:
@@ -39,6 +45,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         root_session_id,
                         parent_session_id,
                         session_kind,
+                        formal_version_number,
                         original_content,
                         input_echo,
                         clarification_count,
@@ -49,7 +56,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         completed_at,
                         archived_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._record_to_row(persisted_record),
                 )
@@ -61,6 +68,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         root_session_id = ?,
                         parent_session_id = ?,
                         session_kind = ?,
+                        formal_version_number = ?,
                         original_content = ?,
                         input_echo = ?,
                         clarification_count = ?,
@@ -76,6 +84,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         persisted_record.root_session_id,
                         persisted_record.parent_session_id,
                         persisted_record.session_kind.value,
+                        persisted_record.formal_version_number,
                         persisted_record.original_content,
                         persisted_record.input_echo,
                         persisted_record.clarification_count,
@@ -106,6 +115,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     root_session_id,
                     parent_session_id,
                     session_kind,
+                    formal_version_number,
                     original_content,
                     input_echo,
                     clarification_count,
@@ -134,6 +144,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             ),
             parent_session_id=self._nullable_text(row["parent_session_id"]),
             session_kind=SessionKind(str(row["session_kind"])),
+            formal_version_number=self._nullable_int(row["formal_version_number"]),
             original_content=str(row["original_content"]),
             input_echo=str(row["input_echo"]),
             clarification_count=int(row["clarification_count"]),
@@ -161,6 +172,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 root_session_id,
                 parent_session_id,
                 session_kind,
+                formal_version_number,
                 original_content,
                 input_echo,
                 clarification_count,
@@ -221,7 +233,13 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
         existing = self.get_session_snapshot(snapshot.session_id)
         persisted_snapshot = snapshot
         if existing is not None:
-            persisted_snapshot = snapshot.model_copy(update={"created_at": existing.created_at})
+            update_payload: dict[str, object] = {"created_at": existing.created_at}
+            if (
+                snapshot.formal_version_number is None
+                and existing.formal_version_number is not None
+            ):
+                update_payload["formal_version_number"] = existing.formal_version_number
+            persisted_snapshot = snapshot.model_copy(update=update_payload)
 
         with self._connect() as connection:
             if existing is None:
@@ -232,6 +250,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         root_session_id,
                         parent_session_id,
                         session_kind,
+                        formal_version_number,
                         archive_title,
                         original_content,
                         input_echo,
@@ -245,7 +264,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         completed_at,
                         archived_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._snapshot_to_row(persisted_snapshot),
                 )
@@ -257,6 +276,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         root_session_id = ?,
                         parent_session_id = ?,
                         session_kind = ?,
+                        formal_version_number = ?,
                         archive_title = ?,
                         original_content = ?,
                         input_echo = ?,
@@ -275,6 +295,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         persisted_snapshot.root_session_id,
                         persisted_snapshot.parent_session_id,
                         persisted_snapshot.session_kind.value,
+                        persisted_snapshot.formal_version_number,
                         persisted_snapshot.archive_title,
                         persisted_snapshot.original_content,
                         persisted_snapshot.input_echo,
@@ -318,6 +339,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     root_session_id,
                     parent_session_id,
                     session_kind,
+                    formal_version_number,
                     archive_title,
                     original_content,
                     input_echo,
@@ -370,6 +392,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 root_session_id,
                 parent_session_id,
                 session_kind,
+                formal_version_number,
                 archive_title,
                 original_content,
                 input_echo,
@@ -451,6 +474,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     root_session_id TEXT NOT NULL DEFAULT '',
                     parent_session_id TEXT,
                     session_kind TEXT NOT NULL DEFAULT 'analysis',
+                    formal_version_number INTEGER,
                     original_content TEXT NOT NULL,
                     input_echo TEXT NOT NULL,
                     clarification_count INTEGER NOT NULL,
@@ -477,6 +501,10 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     "ALTER TABLE session_records "
                     "ADD COLUMN root_session_id TEXT NOT NULL DEFAULT ''"
                 )
+            if "formal_version_number" not in record_columns:
+                connection.execute(
+                    "ALTER TABLE session_records ADD COLUMN formal_version_number INTEGER"
+                )
 
             connection.execute(
                 """
@@ -485,6 +513,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     root_session_id TEXT NOT NULL DEFAULT '',
                     parent_session_id TEXT,
                     session_kind TEXT NOT NULL,
+                    formal_version_number INTEGER,
                     archive_title TEXT NOT NULL,
                     original_content TEXT NOT NULL,
                     input_echo TEXT NOT NULL,
@@ -507,6 +536,11 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     "ALTER TABLE session_snapshots "
                     "ADD COLUMN root_session_id TEXT NOT NULL DEFAULT ''"
                 )
+            if "formal_version_number" not in snapshot_columns:
+                connection.execute(
+                    "ALTER TABLE session_snapshots ADD COLUMN formal_version_number INTEGER"
+                )
+            self._backfill_formal_version_numbers(connection)
 
     def _connect(self) -> sqlite3.Connection:
         """Open a SQLite connection with row access by column name."""
@@ -524,6 +558,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             record.root_session_id,
             record.parent_session_id,
             record.session_kind.value,
+            record.formal_version_number,
             record.original_content,
             record.input_echo,
             record.clarification_count,
@@ -550,6 +585,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             ),
             parent_session_id=self._nullable_text(row["parent_session_id"]),
             session_kind=session_kind,
+            formal_version_number=self._nullable_int(row["formal_version_number"]),
             original_content=str(row["original_content"]),
             input_echo=str(row["input_echo"]),
             clarification_count=int(row["clarification_count"]),
@@ -570,6 +606,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             snapshot.root_session_id,
             snapshot.parent_session_id,
             snapshot.session_kind.value,
+            snapshot.formal_version_number,
             snapshot.archive_title,
             snapshot.original_content,
             snapshot.input_echo,
@@ -614,6 +651,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             ),
             parent_session_id=self._nullable_text(row["parent_session_id"]),
             session_kind=session_kind,
+            formal_version_number=self._nullable_int(row["formal_version_number"]),
             archive_title=str(row["archive_title"]),
             original_content=str(row["original_content"]),
             input_echo=str(row["input_echo"]),
@@ -664,6 +702,66 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
         if value is None:
             return None
         return str(value)
+
+    def _nullable_int(self, value: object) -> int | None:
+        """Normalize nullable integer columns."""
+
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        return int(str(value))
+
+    def _backfill_formal_version_numbers(self, connection: sqlite3.Connection) -> None:
+        """Assign stable formal version numbers to legacy formal rows that predate v0.4.5."""
+
+        self._backfill_formal_version_numbers_for_table(connection, "session_records")
+        self._backfill_formal_version_numbers_for_table(connection, "session_snapshots")
+
+    def _backfill_formal_version_numbers_for_table(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+    ) -> None:
+        """Backfill missing formal version numbers for one SQLite table."""
+
+        rows = connection.execute(
+            f"""
+            SELECT
+                session_id,
+                root_session_id,
+                session_kind,
+                formal_version_number,
+                created_at
+            FROM {table_name}
+            WHERE session_kind IN ('analysis', 'full_plan_composed')
+            ORDER BY root_session_id ASC, created_at ASC, session_id ASC
+            """
+        ).fetchall()
+
+        grouped_rows: dict[str, list[sqlite3.Row]] = {}
+        for row in rows:
+            root_session_id = str(row["root_session_id"] or row["session_id"])
+            grouped_rows.setdefault(root_session_id, []).append(row)
+
+        for thread_rows in grouped_rows.values():
+            used_numbers = {
+                int(row["formal_version_number"])
+                for row in thread_rows
+                if row["formal_version_number"] is not None
+            }
+            next_number = 1
+            for row in thread_rows:
+                if row["formal_version_number"] is not None:
+                    continue
+                while next_number in used_numbers:
+                    next_number += 1
+                connection.execute(
+                    f"UPDATE {table_name} SET formal_version_number = ? WHERE session_id = ?",
+                    (next_number, str(row["session_id"])),
+                )
+                used_numbers.add(next_number)
+                next_number += 1
 
     def _resolve_root_session_id(
         self,

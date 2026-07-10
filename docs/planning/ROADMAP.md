@@ -238,3 +238,38 @@ v0.2 的最小实现只覆盖以下能力：
 - `v0.4.0` 已完成发布收口，发布分支为 `release/v0.4.0`
 - `v0.4.0` 已完成前端三段式壳层、空状态与结果态重排、左侧历史导航收敛、工作区链路面板、统一 loading / 错误反馈与响应式收口
 - `v0.4.0` 的具体执行步骤、验收清单与收口状态统一维护在 `docs/planning/PROGRESS.md`
+
+------
+
+## v0.4.5 主题：Frontend Polish / Engineering Debt Cleanup（进行中）
+
+### 目标
+
+`v0.4.5` 不是新的产品扩张版本，而是在 `v0.4.0` 已发布底座上继续做增量收口。
+
+当前阶段聚焦三件事：
+
+- 继续打磨现有 `/app` 的前端交互细节，而不是重做产品结构
+- 收掉已经暴露出来的工程债，优先修正文档、版本元数据与依赖配置的不一致
+- 在不突破产品边界的前提下，受控补上本地历史搜索、non-root leaf delete 与线性分支 follow-up 语义
+
+### 核心原则
+
+- 保持产品边界不变：单次分析主链路、最多一次澄清、显式 follow-up、显式历史导航、Feishu 归档、SQLite 状态来源之一
+- 不引入真实外部搜索、真实登录、自动记忆、多 Agent 或新的后端平台能力
+- 不借工程债清理顺手扩大 history / delete / draft / archive 语义
+- 所有改动继续遵守 `api / application / domain / infrastructure / presentation / prompts` 分层
+
+### 当前已确认优先项
+
+1. 修正已发布 `v0.4.0` 与包元数据仍停留在 `0.2.0` 的不一致
+2. 核实并处理 `pyproject.toml` 中可疑的 dev 依赖残留 `httpx2`
+3. 在此基础上继续推进低风险前端交互细节优化
+4. 以“本地 formal history 搜索、non-root leaf delete、全局版本号递增 + 轻关系标记”的约束推进下一轮 history 能力补全
+
+### 当前状态
+
+- `v0.4.5` 已启动，当前稳定基线仍为 `release/v0.4.0`
+- `v0.4.5` 的 `P1/P2/P3` 已完成首轮实现与验证：本地 formal history 搜索、线性分支 follow-up 语义、non-root formal leaf delete 已接线完成
+- `v0.4.5` 已完成 `P4` 收口：文档、测试、类型检查与分支整理已对齐，当前本地收口分支为 `release/v0.4.5`
+- `v0.4.5` 的步骤化执行计划统一维护在 `docs/planning/PROGRESS.md`

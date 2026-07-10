@@ -126,6 +126,16 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
         default=None,
         description="Parent session ID. Root analyses do not have one.",
     )
+    formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number inside the root thread.",
+    )
+    parent_formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number of the direct parent session, if any.",
+    )
     archive_status: ArchiveStatus = Field(description="Current archive status.")
     archive_url: str | None = Field(
         default=None,
@@ -148,6 +158,10 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
     def validate_archive_metadata(self) -> "BaseAnalysisResponse":
         """Keep archive metadata internally consistent."""
 
+        if self.parent_session_id is None and self.parent_formal_version_number is not None:
+            raise ValueError(
+                "parent_formal_version_number is only allowed when parent_session_id exists."
+            )
         if self.archive_status == ArchiveStatus.SUCCEEDED:
             if self.archive_url is None:
                 raise ValueError("archive_url is required when archive succeeds.")
@@ -270,6 +284,19 @@ class FollowUpResponse(FollowUpLlmOutput):
         description="Stable root session ID inherited from the idea thread.",
     )
     parent_session_id: str = Field(min_length=1, description="Parent session ID.")
+    formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Formal version number. Follow-up refinement stays draft-only, "
+            "so this is null."
+        ),
+    )
+    parent_formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number of the direct parent session.",
+    )
     session_kind: SessionKind = Field(
         default=SessionKind.FOLLOW_UP_REFINEMENT,
         description="Session kind for this follow-up response.",
@@ -298,6 +325,8 @@ class FollowUpResponse(FollowUpLlmOutput):
 
         if self.session_kind != SessionKind.FOLLOW_UP_REFINEMENT:
             raise ValueError("FollowUpResponse must use follow_up_refinement session kind.")
+        if self.formal_version_number is not None:
+            raise ValueError("FollowUpResponse must not include formal_version_number.")
 
         if self.archive_status == ArchiveStatus.SUCCEEDED:
             if self.archive_url is None:
@@ -359,6 +388,23 @@ class SessionHistoryItem(BaseModel):
         default=None,
         description="Immediate parent session ID, if any.",
     )
+    formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number inside the root thread.",
+    )
+    parent_formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number of the direct parent session, if any.",
+    )
+    can_delete_leaf: bool = Field(
+        description="Whether this node can be deleted as a non-root formal leaf.",
+    )
+    delete_block_reason: str | None = Field(
+        default=None,
+        description="Why leaf deletion is blocked for this node, if applicable.",
+    )
     session_kind: SessionKind = Field(description="Kind of session.")
     archive_title: str = Field(min_length=1, description="Semantic archive title.")
     archive_status: ArchiveStatus = Field(description="Current archive status.")
@@ -378,6 +424,7 @@ class SessionHistoryItem(BaseModel):
         "parent_session_id",
         "archive_title",
         "archive_url",
+        "delete_block_reason",
     )
     @classmethod
     def validate_optional_text_not_blank(cls, value: str | None) -> str | None:
@@ -389,6 +436,20 @@ class SessionHistoryItem(BaseModel):
         if not normalized:
             raise ValueError("Session history text fields must not be blank.")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_delete_capability(self) -> "SessionHistoryItem":
+        """Keep leaf-delete metadata internally consistent."""
+
+        if self.can_delete_leaf and self.delete_block_reason is not None:
+            raise ValueError(
+                "delete_block_reason is only allowed when can_delete_leaf is false."
+            )
+        if not self.can_delete_leaf and self.delete_block_reason is None:
+            raise ValueError(
+                "delete_block_reason is required when can_delete_leaf is false."
+            )
+        return self
 
 
 class SessionListResponse(BaseModel):
@@ -403,6 +464,11 @@ class SessionThreadSummary(BaseModel):
     root_session_id: str = Field(min_length=1, description="Root session ID for the thread.")
     root_archive_title: str = Field(min_length=1, description="Semantic title of the root idea.")
     latest_session_id: str = Field(min_length=1, description="Latest session ID in the thread.")
+    latest_formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number of the latest formal session in the thread.",
+    )
     latest_session_kind: SessionKind = Field(description="Latest session kind in the thread.")
     latest_archive_status: ArchiveStatus = Field(description="Latest archive status in the thread.")
     latest_updated_at: datetime = Field(description="Latest update time in the thread.")
@@ -524,6 +590,60 @@ class ThreadDeleteResponse(BaseModel):
         return normalized
 
 
+class SessionLeafDeleteResponse(BaseModel):
+    """Response returned after deleting one non-root formal leaf and attached drafts."""
+
+    session_id: str = Field(min_length=1, description="Deleted formal leaf session ID.")
+    root_session_id: str = Field(min_length=1, description="Root session ID for the thread.")
+    parent_session_id: str = Field(
+        min_length=1,
+        description="Direct parent formal session used as the safe fallback after deletion.",
+    )
+    deleted_session_count: int = Field(
+        ge=1,
+        description="Total number of local sessions removed, including attached draft cache.",
+    )
+    deleted_draft_count: int = Field(
+        ge=0,
+        description="Number of attached follow-up draft sessions removed together with the leaf.",
+    )
+    deleted_archive_count: int = Field(
+        ge=0,
+        description="Number of Feishu archives deleted successfully.",
+    )
+    deleted_session_ids: list[str] = Field(
+        default_factory=list,
+        description="All local session IDs removed during this leaf delete.",
+    )
+    archive_delete_failures: list[ArchiveDeleteFailure] = Field(
+        default_factory=list,
+        description="Remote archive deletions that failed but did not block local cleanup.",
+    )
+
+    @field_validator("session_id", "root_session_id", "parent_session_id")
+    @classmethod
+    def validate_leaf_delete_text_not_blank(cls, value: str) -> str:
+        """Reject blank-only text values in leaf delete responses."""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Leaf delete response text fields must not be blank.")
+        return normalized
+
+    @field_validator("deleted_session_ids")
+    @classmethod
+    def validate_deleted_session_ids(cls, value: list[str]) -> list[str]:
+        """Reject blank-only deleted session identifiers."""
+
+        normalized_ids: list[str] = []
+        for item in value:
+            normalized = item.strip()
+            if not normalized:
+                raise ValueError("deleted_session_ids must not contain blank values.")
+            normalized_ids.append(normalized)
+        return normalized_ids
+
+
 class SessionDetailResponse(BaseModel):
     """Detailed history response for one session."""
 
@@ -532,6 +652,19 @@ class SessionDetailResponse(BaseModel):
     parent_session_id: str | None = Field(
         default=None,
         description="Immediate parent session ID, if any.",
+    )
+    formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Stable formal version number inside the root thread "
+            "when the current session is formal."
+        ),
+    )
+    parent_formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number of the direct parent session, if any.",
     )
     session_kind: SessionKind = Field(description="Kind of session.")
     archive_status: ArchiveStatus = Field(description="Current archive status.")

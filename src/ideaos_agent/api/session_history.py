@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ideaos_agent.api.dependencies import get_session_history_service
 from ideaos_agent.application.session_history_service import SessionHistoryService
-from ideaos_agent.domain.errors import SessionNotFoundError
+from ideaos_agent.domain.errors import SessionNotFoundError, SessionStateError
 from ideaos_agent.models import (
     ArchiveSyncResponse,
     SessionDetailResponse,
+    SessionLeafDeleteResponse,
     SessionListResponse,
     SessionThreadResponse,
     ThreadDeleteResponse,
@@ -49,14 +50,36 @@ def get_session_detail(
         ) from exc
 
 
+@router.delete("/sessions/{session_id}", response_model=SessionLeafDeleteResponse)
+def delete_leaf_session(
+    session_id: str,
+    service: SessionHistoryServiceDependency,
+) -> SessionLeafDeleteResponse:
+    """Delete one non-root formal leaf session and its attached local drafts."""
+
+    try:
+        return service.delete_leaf_session(session_id)
+    except SessionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "session_not_found", "message": str(exc)},
+        ) from exc
+    except SessionStateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "session_state_invalid", "message": str(exc)},
+        ) from exc
+
+
 @router.get("/threads", response_model=ThreadListResponse)
 def list_threads(
     service: SessionHistoryServiceDependency,
     limit: int = Query(default=20, ge=1, le=200),
+    q: str | None = Query(default=None, max_length=200),
 ) -> ThreadListResponse:
     """List recent idea threads grouped by root session."""
 
-    return service.list_threads(limit=limit)
+    return service.list_threads(limit=limit, query=q)
 
 
 @router.post("/threads/sync-remote-archives", response_model=ArchiveSyncResponse)

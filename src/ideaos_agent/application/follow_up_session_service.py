@@ -56,6 +56,7 @@ class FollowUpSessionService:
 
         self._prune_expired_drafts()
         parent_snapshot = self._require_parent_snapshot(payload.parent_session_id)
+        parent_formal_version_number = self._resolve_formal_version_number(parent_snapshot)
         if parent_snapshot.analysis is None:
             raise SessionStateError(
                 "Follow-up parent session must contain a full analysis snapshot."
@@ -76,6 +77,7 @@ class FollowUpSessionService:
             root_session_id=parent_snapshot.root_session_id,
             parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
+            formal_version_number=None,
             original_content=parent_snapshot.original_content,
             input_echo=llm_output.input_echo,
             clarification_count=len(payload.clarifications),
@@ -97,6 +99,7 @@ class FollowUpSessionService:
                 root_session_id=parent_snapshot.root_session_id,
                 parent_session_id=parent_snapshot.session_id,
                 session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
+                formal_version_number=None,
                 archive_title=llm_output.archive_title,
                 original_content=parent_snapshot.original_content,
                 input_echo=llm_output.input_echo,
@@ -118,6 +121,8 @@ class FollowUpSessionService:
             session_id=session_id,
             root_session_id=parent_snapshot.root_session_id,
             parent_session_id=parent_snapshot.session_id,
+            formal_version_number=None,
+            parent_formal_version_number=parent_formal_version_number,
             session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
             archive_status=final_record.archive_status,
             archive_url=final_record.archive_url,
@@ -141,6 +146,7 @@ class FollowUpSessionService:
             raise SessionStateError(
                 "Parent analysis session must include a full analysis snapshot."
             )
+        parent_formal_version_number = self._resolve_formal_version_number(parent_snapshot)
 
         composed_analysis = apply_section_updates(
             parent_snapshot.analysis,
@@ -148,12 +154,16 @@ class FollowUpSessionService:
         )
         session_id = resolve_session_id(None)
         completed_at = datetime.now(UTC)
+        formal_version_number = self._next_formal_version_number(
+            refinement_snapshot.root_session_id
+        )
 
         session_record = SessionRecord(
             session_id=session_id,
             root_session_id=refinement_snapshot.root_session_id,
             parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
+            formal_version_number=formal_version_number,
             original_content=parent_snapshot.original_content,
             input_echo=refinement_snapshot.input_echo,
             clarification_count=len(refinement_snapshot.clarifications),
@@ -168,6 +178,7 @@ class FollowUpSessionService:
             root_session_id=refinement_snapshot.root_session_id,
             parent_session_id=parent_snapshot.session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
+            formal_version_number=formal_version_number,
             archive_title=refinement_snapshot.archive_title,
             original_content=parent_snapshot.original_content,
             input_echo=refinement_snapshot.input_echo,
@@ -227,6 +238,8 @@ class FollowUpSessionService:
             root_session_id=refinement_snapshot.root_session_id,
             session_kind=SessionKind.FULL_PLAN_COMPOSED,
             parent_session_id=parent_snapshot.session_id,
+            formal_version_number=formal_version_number,
+            parent_formal_version_number=parent_formal_version_number,
             archive_status=final_record.archive_status,
             archive_url=final_record.archive_url,
             archive_title=persisted_snapshot.archive_title,
@@ -291,6 +304,53 @@ class FollowUpSessionService:
         if snapshot is None:
             raise SessionNotFoundError(f"Session snapshot not found: {session_id}")
         return snapshot
+
+    def _resolve_formal_version_number(self, snapshot: SessionSnapshot) -> int | None:
+        """Resolve one stable formal version number with legacy fallback."""
+
+        if snapshot.session_kind == SessionKind.FOLLOW_UP_REFINEMENT:
+            return None
+        if snapshot.formal_version_number is not None:
+            return snapshot.formal_version_number
+        return self._build_formal_version_lookup(snapshot.root_session_id).get(snapshot.session_id)
+
+    def _next_formal_version_number(self, root_session_id: str) -> int:
+        """Return the next stable formal version number for one root thread."""
+
+        version_lookup = self._build_formal_version_lookup(root_session_id)
+        if not version_lookup:
+            return 1
+        return max(version_lookup.values()) + 1
+
+    def _build_formal_version_lookup(self, root_session_id: str) -> dict[str, int]:
+        """Build a stable formal version-number lookup for one root thread."""
+
+        snapshots = [
+            snapshot
+            for snapshot in self._session_snapshot_store.list_session_snapshots(
+                root_session_id=root_session_id
+            )
+            if snapshot.session_kind in {SessionKind.ANALYSIS, SessionKind.FULL_PLAN_COMPOSED}
+        ]
+        snapshots.sort(key=lambda item: (item.created_at, item.session_id))
+
+        used_numbers = {
+            snapshot.formal_version_number
+            for snapshot in snapshots
+            if snapshot.formal_version_number is not None
+        }
+        next_number = 1
+        resolved: dict[str, int] = {}
+        for snapshot in snapshots:
+            if snapshot.formal_version_number is not None:
+                resolved[snapshot.session_id] = snapshot.formal_version_number
+                continue
+            while next_number in used_numbers:
+                next_number += 1
+            resolved[snapshot.session_id] = next_number
+            used_numbers.add(next_number)
+            next_number += 1
+        return resolved
 
     def _find_active_draft(self, parent_session_id: str) -> SessionSnapshot | None:
         """Return the latest non-expired draft cached under one formal parent session."""

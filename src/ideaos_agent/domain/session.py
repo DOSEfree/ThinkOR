@@ -50,6 +50,11 @@ class SessionSnapshot(BaseModel):
         default=SessionKind.ANALYSIS,
         description="Type of session snapshot.",
     )
+    formal_version_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Stable formal version number inside one root thread.",
+    )
     archive_title: str = Field(min_length=1, description="Semantic archive title for the session.")
     original_content: str = Field(
         min_length=1,
@@ -132,6 +137,10 @@ class SessionSnapshot(BaseModel):
                 raise ValueError("Follow-up refinement snapshots require parent_session_id.")
             if self.follow_up_question is None:
                 raise ValueError("Follow-up refinement snapshots require follow_up_question.")
+            if self.formal_version_number is not None:
+                raise ValueError(
+                    "Follow-up refinement snapshots must not include formal_version_number."
+                )
             if self.analysis is not None:
                 raise ValueError("Follow-up refinement snapshots must not include analysis.")
             if self.refinement_result is None:

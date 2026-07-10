@@ -226,11 +226,14 @@ def test_session_service_generates_session_id_for_first_request() -> None:
     result = service.analyze(IdeaInput(content="我想做一个帮助独立开发者验证产品想法的工具。"))
 
     assert result.session_id.startswith("sess_")
+    assert result.formal_version_number == 1
+    assert result.parent_formal_version_number is None
     assert result.archive_status == ArchiveStatus.NOT_TRIGGERED
     assert result.archive_url is None
     persisted_record = archive_store.get_session_record(result.session_id)
     assert persisted_record is not None
     assert persisted_record.root_session_id == result.session_id
+    assert persisted_record.formal_version_number == 1
     assert persisted_record.archive_status == ArchiveStatus.NOT_TRIGGERED
     assert persisted_record.completed_at is None
     assert snapshot_store.get_session_snapshot(result.session_id) is None
@@ -269,11 +272,14 @@ def test_session_service_reuses_existing_session_id_for_completed_analysis() -> 
     )
 
     assert result.session_id == "sess_existing"
+    assert result.formal_version_number == 1
+    assert result.parent_formal_version_number is None
     assert result.archive_status == ArchiveStatus.SUCCEEDED
     assert result.archive_url == "https://feishu.example.com/docx/sess_existing"
     persisted_record = archive_store.get_session_record("sess_existing")
     assert persisted_record is not None
     assert persisted_record.root_session_id == "sess_existing"
+    assert persisted_record.formal_version_number == 1
     assert persisted_record.archive_status == ArchiveStatus.SUCCEEDED
     assert persisted_record.completed_at is not None
     assert persisted_record.archived_at is not None
@@ -283,6 +289,7 @@ def test_session_service_reuses_existing_session_id_for_completed_analysis() -> 
     persisted_snapshot = snapshot_store.get_session_snapshot("sess_existing")
     assert persisted_snapshot is not None
     assert persisted_snapshot.root_session_id == "sess_existing"
+    assert persisted_snapshot.formal_version_number == 1
     assert persisted_snapshot.analysis is not None
     assert len(archiver.calls) == 1
     assert archiver.calls[0].archive_title == "独立开发者产品验证工具"
@@ -323,16 +330,20 @@ def test_session_service_marks_archive_failed_without_blocking_response() -> Non
     )
 
     assert result.session_id == "sess_failed"
+    assert result.formal_version_number == 1
+    assert result.parent_formal_version_number is None
     assert result.archive_status == ArchiveStatus.FAILED
     assert result.archive_url is None
     assert result.analysis is not None
     persisted_record = archive_store.get_session_record("sess_failed")
     assert persisted_record is not None
     assert persisted_record.root_session_id == "sess_failed"
+    assert persisted_record.formal_version_number == 1
     assert persisted_record.archive_status == ArchiveStatus.FAILED
     assert persisted_record.archive_error == "飞书归档失败。"
     assert persisted_record.archived_at is not None
     persisted_snapshot = snapshot_store.get_session_snapshot("sess_failed")
     assert persisted_snapshot is not None
     assert persisted_snapshot.root_session_id == "sess_failed"
+    assert persisted_snapshot.formal_version_number == 1
     assert persisted_snapshot.archived_at is not None
