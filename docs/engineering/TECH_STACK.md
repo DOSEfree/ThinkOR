@@ -9,7 +9,8 @@
 - FastAPI
 - Pydantic
 - Jinja2
-- SQLite（如后续需要存储）
+- SQLite（当前已用于本地会话索引与结构化快照存储）
+- python-dotenv
 - pytest
 - ruff
 - mypy
@@ -77,6 +78,8 @@
 - `pydantic`：输入输出模型
 - `jinja2`：轻量页面模板
 - `httpx`：HTTP 客户端
+- `python-dotenv`：本地 `.env` 环境变量加载
+- `sqlite3`：Python 标准库内建，本地会话索引与快照存储的底层支撑
 
 ### 开发时
 

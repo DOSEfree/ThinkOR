@@ -17,14 +17,18 @@
 
 核心分层如下：
 
-1. `presentation`：页面展示与接口入口
-2. `application`：编排分析流程
-3. `domain`：核心数据结构与业务规则
-4. `infrastructure`：模型调用、外部 API、文件与存储适配
+1. `api`：HTTP 路由、依赖装配与响应入口
+2. `presentation`：页面模板、静态资源与前端展示层
+3. `application`：编排分析流程与会话级动作
+4. `domain`：核心数据结构与业务规则
+5. `infrastructure`：模型调用、外部 API、文件与存储适配
+6. `prompts`：提示词模板与交互约束
 
 ------
 
-## 建议目录
+## 当前目录
+
+当前仓库已实际采用以下目录组织，而不再只是早期建议目录：
 
 ```text
 src/ideaos_agent/
@@ -32,15 +36,31 @@ src/ideaos_agent/
 ├─ application/
 ├─ domain/
 ├─ infrastructure/
+├─ presentation/
 ├─ prompts/
+├─ config.py
+├─ main.py
 └─ models.py
 ```
 
 说明：
 
-- `prompts/` 单独存放提示词模板，避免和业务代码耦合
-- `models.py` 作为初始化阶段的核心数据模型入口，后续可以逐步拆分
-- `main.py` 提供最小 FastAPI 应用入口，保证项目在 Phase 0 就可本地启动
+- `presentation/` 已包含 `templates/` 与 `static/`，承接 `/app` 的页面壳层、样式与前端逻辑
+- `api/` 与 `presentation/` 分别承担 JSON 接口与页面入口，不混用职责
+- `models.py` 仍作为 API-facing 模型总入口，后续如有必要再逐步拆分
+- `main.py` 提供 FastAPI 入口，负责静态资源挂载与路由组合
+- `config.py` 统一承接环境变量读取与类型化运行配置
+
+------
+
+## 分层说明
+
+当前采用的职责边界如下：
+
+1. `presentation`：页面展示与接口入口
+2. `application`：编排分析流程
+3. `domain`：核心数据结构与业务规则
+4. `infrastructure`：模型调用、外部 API、文件与存储适配
 
 ------
 
@@ -84,25 +104,33 @@ src/ideaos_agent/
 
 ## 未来扩展边界
 
-后续如果进入 `v0.3+`，可以再评估：
+后续仍可再评估：
 
-- 历史记录存储
 - 用户项目空间
 - 更丰富的结果编辑能力
 - 外部信息源接入
+- 更细的公开 demo 打包与部署方式
 
 但这些都不应反向影响当前轻量分层架构的简洁性。
 
 ------
 
-## v0.2 收口备注
+## 当前已落地的工程事实
 
-当前已落地的 v0.2 方向为“Session Archive / Feishu Archive”，工程上保持以下边界：
+截至 `v0.4.5` / `v0.5.0` 准备阶段，以下内容已经是现状，不再属于“未来再说”的能力：
+
+- 本地 `SQLite` 会话索引与结构化快照存储
+- Feishu 归档适配与 best-effort 删除 / 探测
+- `/app` 前端展示层、历史侧栏与线程上下文面板
+- follow-up refinement 与 composed full plan 的会话级编排
+- 显式历史导航、正式历史搜索、线性分支语义与非 ROOT 正式叶子删除
+
+这些能力继续保持以下工程边界：
 
 - `application`：在正式分析完成后编排归档动作，但不把飞书写入逻辑混入主分析服务
 - `domain`：定义会话记录、归档状态与最小索引字段
-- `infrastructure`：分别承接本地 `SQLite` 索引存储与飞书归档适配
-- `presentation`：展示归档状态与文档链接，而不是直接承担持久化职责
+- `infrastructure`：分别承接本地 `SQLite` 存储、LLM 适配与飞书归档适配
+- `presentation`：展示归档状态、历史导航与工作区界面，而不是直接承担持久化职责
 
 额外约束：
 

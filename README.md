@@ -1,20 +1,22 @@
 # IdeaOS-Agent
 
-IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
+IdeaOS-Agent 是一个面向想法孵化阶段的想法开发系统。
 
 它的目标不是成为通用聊天助手，而是帮助用户把一个模糊想法拆解为可执行的下一步计划。
 
 ## 当前阶段
 
-当前仓库的稳定发布基线仍然是 `v0.4.0`，并且已经完成 `v0.4.5` 的一轮增量收口，当前能力重点包括：
+当前仓库已经完成 `v0.4.5` 的一轮增量收口，并以 `release/v0.4.5` 作为当前整理基线。
+
+接下来的 `v0.5.0` 不再开启一轮新的大功能扩张，而是聚焦“整合、复检、公开 demo 准备”，当前能力重点包括：
 
 - 保留 `v0.1` 已验证完成的单次分析链路与单轮澄清模型
 - 完成 `v0.2.0` 的 `session_id / archive_status / archive_url` 归档闭环与本地 `SQLite + Feishu` 双层状态
-- 完成 `v0.2.5` 的 bounded follow-up、局部完善结果与新版完整方案合成
-- 完成 `v0.3.0` 的本地历史记录列表、thread 导航、历史详情查看与从任意已完成节点继续 follow-up
-- 完成 `v0.4.0` 的 `Topbar + Sidebar + Workspace` 前端壳层重构、历史侧栏收敛、工作区链路面板与统一状态反馈
-- 完成 `v0.4.5` 的本地 formal history 搜索、全局递增版本号 + 轻关系标记分支语义，以及 non-root formal leaf delete
-- 在飞书归档正文中补充 thread context，明确根会话、父节点与当前会话角色
+- 完成 `v0.2.5` 的有界 follow-up、局部完善结果与新版完整方案合成
+- 完成 `v0.3.0` 的本地历史记录列表、链路导航、历史详情查看与从任意已完成节点继续 follow-up
+- 完成 `v0.4.0` 的 `顶部栏 + 侧边栏 + 工作区` 前端壳层重构、历史侧栏收敛、工作区链路面板与统一状态反馈
+- 完成 `v0.4.5` 的本地正式历史搜索、全局递增版本号 + 轻关系标记分支语义，以及非 ROOT 正式叶子删除
+- 在飞书归档正文中补充链路上下文，明确根会话、父节点与当前会话角色
 
 当前仍然明确延后的能力：
 
@@ -24,7 +26,8 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 当前规划状态：
 
 - `v0.4.0` 已作为独立发布分支收口
-- `v0.4.5` 已完成当前轮实现、测试与文档收口，当前本地收口分支为 `release/v0.4.5`
+- `v0.4.5` 已完成当前轮实现、测试与文档收口，并已 push 到 `origin/release/v0.4.5`
+- `v0.5.0` 已启动，当前重点是整合复检、公开 demo 准备、README 视角调整与环境说明收口
 - 当前产品边界保持不变：显式历史导航不等于自动长期记忆，也不引入真实外部搜索、真实登录或多 Agent
 
 ## 当前核心能力
@@ -50,17 +53,17 @@ IdeaOS-Agent 是一个面向想法孵化阶段的 Idea Development System。
 
 在 `v0.4.5` 当前收口状态下，系统继续提供以下显式历史能力：
 
-- 查询最近完成的本地 sessions
-- 在左侧侧栏中按 thread 搜索以前的本地想法
-- 查看同一条 idea thread 的父子链路
+- 查询最近完成的本地会话
+- 在左侧侧栏中按链路搜索以前的本地想法
+- 查看同一条想法链路的父子关系
 - 以全局版本号递增的方式展示旧版本分支 follow-up 关系，并在左侧显示 `from Vxx` 轻关系标记
 - 打开任意已完成历史节点的详情结果
 - 从任意允许继续的历史节点显式发起 follow-up
-- 删除 non-root formal leaf 节点，并在必要时自动回退到父 formal 版本
+- 删除非 ROOT 正式叶子节点，并在必要时自动回退到父正式版本
 
 ## 项目原则
 
-- Agent 服务于 Idea，不反客为主
+- Agent 服务于想法，不反客为主
 - 优先简单架构，避免过度设计
 - 优先可解释性、可维护性与可验证性
 - 先验证价值，再追求复杂功能
@@ -131,12 +134,12 @@ python -m uvicorn ideaos_agent.main:app --reload
 - `/api/v1/idea-analysis`：后端 JSON 接口，返回分析内容以及 `session_id / archive_status / archive_url`
 - `/api/v1/follow-up/refine`：基于已完成 session 发起一次有界的 follow-up 完善
 - `/api/v1/follow-up/compose-full-plan`：在用户确认局部修改后生成新版完整方案
-- `/api/v1/sessions`：查询最近完成的本地历史 session
-- `/api/v1/sessions/{session_id}`：查看某个历史 session 的完整详情
-- `DELETE /api/v1/sessions/{session_id}`：删除一个 non-root formal leaf 版本，并级联清理其附着的本地 draft
-- `/api/v1/threads`：查询本地 idea thread 摘要列表
-- `/api/v1/threads/{root_session_id}`：查看某条 thread 的链路节点
-- `DELETE /api/v1/threads/{root_session_id}`：删除整条本地 idea thread，并 best-effort 清理关联飞书归档
+- `/api/v1/sessions`：查询最近完成的本地历史会话
+- `/api/v1/sessions/{session_id}`：查看某个历史会话的完整详情
+- `DELETE /api/v1/sessions/{session_id}`：删除一个非 ROOT 正式叶子版本，并级联清理其附着的本地草稿
+- `/api/v1/threads`：查询本地想法链路摘要列表
+- `/api/v1/threads/{root_session_id}`：查看某条链路的节点列表
+- `DELETE /api/v1/threads/{root_session_id}`：删除整条本地想法链路，并 best-effort 清理关联飞书归档
 - `POST /api/v1/threads/sync-remote-archives`：手动刷新远端归档缺失状态并同步清理本地历史
 
 归档相关说明：
@@ -165,11 +168,11 @@ python -m mypy src
 - 开启真实飞书归档后，可为同一会话生成文档并返回链接
 - 基于当前结果发起 follow-up 时，可得到局部完善结果并继续归档
 - 用户确认修改后，可生成新版完整方案且不覆盖原 session
-- `/app` 已呈现 `Topbar + Sidebar + Workspace` 三段式结构，并可在左侧查看、搜索和展开本地历史
-- `/app` 中可查看当前 thread 上下文，并从历史节点继续 follow-up
-- 旧版本分支 follow-up 会继续分配新的全局 formal 版本号，不会重排历史编号
-- non-root formal leaf delete 会保持 `ROOT` 不可单删、非叶子不可单删的边界
-- 飞书归档正文可展示根会话、父节点与 thread context
+- `/app` 已呈现 `顶部栏 + 侧边栏 + 工作区` 三段式结构，并可在左侧查看、搜索和展开本地历史
+- `/app` 中可查看当前链路上下文，并从历史节点继续 follow-up
+- 旧版本分支 follow-up 会继续分配新的全局正式版本号，不会重排历史编号
+- 非 ROOT 正式叶子删除会保持 `ROOT` 不可单删、非叶子不可单删的边界
+- 飞书归档正文可展示根会话、父节点与链路上下文
 
 ## 下一阶段
 
