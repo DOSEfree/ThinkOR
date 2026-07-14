@@ -1,189 +1,120 @@
-# IdeaOS-Agent
+# IdeaOS-Agent：让想法拥有自己的生命周期
 
-IdeaOS-Agent 是一个面向想法孵化阶段的想法开发系统。
+IdeaOS-Agent 是 IdeaOS 的第一个公开版本，也是我尝试回答一个问题的开始：
 
-它的目标不是成为通用聊天助手，而是帮助用户把一个模糊想法拆解为可执行的下一步计划。
+人每天产生那么多奇思妙想，要怎么实现呢？
 
-## 当前阶段
+LLM 横空出世，我曾以为这就是这个问题最完美的答案。但我发现实际还是差一点：LLM 并不会真正管理你的想法。
 
-当前仓库已经完成 `v0.4.5` 的一轮增量收口，并以 `release/v0.4.5` 作为当前整理基线。
+大多数聊天机器人把"想法"当成聊天记录中的一段文本。
 
-接下来的 `v0.5.0` 不再开启一轮新的大功能扩张，而是聚焦“整合、复检、公开 demo 准备”，当前能力重点包括：
+当上下文越来越长，它会受到历史内容影响；当信息不足，它会倾向于补全细节；当一次聊天结束，这个想法也随之淹没在新的消息里。
 
-- 保留 `v0.1` 已验证完成的单次分析链路与单轮澄清模型
-- 完成 `v0.2.0` 的 `session_id / archive_status / archive_url` 归档闭环与本地 `SQLite + Feishu` 双层状态
-- 完成 `v0.2.5` 的有界 follow-up、局部完善结果与新版完整方案合成
-- 完成 `v0.3.0` 的本地历史记录列表、链路导航、历史详情查看与从任意已完成节点继续 follow-up
-- 完成 `v0.4.0` 的 `顶部栏 + 侧边栏 + 工作区` 前端壳层重构、历史侧栏收敛、工作区链路面板与统一状态反馈
-- 完成 `v0.4.5` 的本地正式历史搜索、全局递增版本号 + 轻关系标记分支语义，以及非 ROOT 正式叶子删除
-- 在飞书归档正文中补充链路上下文，明确根会话、父节点与当前会话角色
+IdeaOS 试图换一种方式。
 
-当前仍然明确延后的能力：
+在这里，一个想法不是一段 Context，也不是一次 Conversation，而是一个可以持续演进的对象（Idea Object）。
 
-- Feishu 子文档 / Wiki 层级组织：延后到后续版本再评估
-- 自动跨会话长期记忆：仍然不是当前产品目标
+每一次分析都围绕这个对象展开：澄清未知、识别信息缺口、形成结构化方案、记录版本演进，并让后续所有 Follow-up 都服务于同一个想法，而不是继续堆积聊天记录。
 
-当前规划状态：
+它不追求成为另一个万能 AI，而希望成为一个真正帮助你思考和孵化想法的系统。
 
-- `v0.4.0` 已作为独立发布分支收口
-- `v0.4.5` 已完成当前轮实现、测试与文档收口，并已 push 到 `origin/release/v0.4.5`
-- `v0.5.0` 已启动，当前重点是整合复检、公开 demo 准备、README 视角调整与环境说明收口
-- 当前产品边界保持不变：显式历史导航不等于自动长期记忆，也不引入真实外部搜索、真实登录或多 Agent
+## 界面预览
 
-## 当前核心能力
+<p align="center">
+  <img src="README_image/v0.5.0_1.png" alt="IdeaOS-Agent 界面预览 1" width="49%" />
+  <img src="README_image/v0.5.0_2.png" alt="IdeaOS-Agent 界面预览 2" width="49%" />
+</p>
 
-面向单次输入的想法分析，系统仍逐步输出以下九个分析模块：
+## 它可以做什么
 
-1. 想法摘要
-2. 可行性分析
-3. 市场判断
-4. 知识缺口分析
-5. 资源缺口分析
-6. 团队需求分析
-7. 相似项目参考
-8. MVP 路线图
-9. 长期发展路线图
+IdeaOS-Agent 围绕一条完整但足够克制的工作流展开：
 
-在上述分析完成后，当前版本还会补充以下归档能力：
+<p align="center">
+  <img src="README_image/IdeaOS-Agent工作流.png" alt="IdeaOS-Agent 工作流" width="88%" />
+</p>
 
-- 首次请求生成并返回 `session_id`，用于串联“原始输入 + 单轮澄清 + 最终分析”
-- 完成态分析自动写入本地 `SQLite` 索引，记录 `archive_status`
-- 归档成功时返回 `archive_url`，可直接打开飞书文档
-- 归档失败不阻塞主分析结果返回
+在这个过程中，它不会无限追问，也不会无限聊天，而是尽可能让每一次交互都推动想法向前演进。
 
-在 `v0.4.5` 当前收口状态下，系统继续提供以下显式历史能力：
+目前 `v0.5.0` 公开版本已经支持：
 
-- 查询最近完成的本地会话
-- 在左侧侧栏中按链路搜索以前的本地想法
-- 查看同一条想法链路的父子关系
-- 以全局版本号递增的方式展示旧版本分支 follow-up 关系，并在左侧显示 `from Vxx` 轻关系标记
-- 打开任意已完成历史节点的详情结果
-- 从任意允许继续的历史节点显式发起 follow-up
-- 删除非 ROOT 正式叶子节点，并在必要时自动回退到父正式版本
+- 有界澄清：仅在必要时提出有限的问题，帮助补全上下文。
+- 结构化分析：围绕可行性、市场、资源、风险、MVP、长期方向等维度输出完整分析。
+- Follow-up 演进：支持针对已有方案继续讨论，而不是重新开始一次分析。
+- 版本合成：根据 Follow-up 内容自动生成新的完整方案。
+- 历史管理：所有完成态会话都会保存在本地 SQLite，并组织为 Idea Thread。
+- 飞书归档（可选）：支持将分析结果同步归档到飞书文档。
 
-## 项目原则
+## 快速开始
 
-- Agent 服务于想法，不反客为主
-- 优先简单架构，避免过度设计
-- 优先可解释性、可维护性与可验证性
-- 先验证价值，再追求复杂功能
-
-## 文档导航
-
-- [项目愿景](docs/strategy/VISION.md)
-- [产品定义](docs/product/PRODUCT.md)
-- [开发路线图](docs/planning/ROADMAP.md)
-- [系统架构](docs/engineering/ARCHITECTURE.md)
-- [技术栈说明](docs/engineering/TECH_STACK.md)
-- [代码风格](docs/engineering/CODE_STYLE.md)
-- [协作规范](docs/management/GITHUB_WORKFLOW.md)
-- [Agent 协作说明](docs/agent/AGENT_COLLABORATION.md)
-
-## 环境准备
-
-当前推荐环境：
-
-- Conda 虚拟环境
-- Python `3.13`
-- Windows PowerShell、macOS Terminal 或 Linux Shell
-- `pip` 作为默认依赖安装方式
-
-说明：
-
-- 项目当前以 Python `3.13` 作为主开发与 CI 基线。
-- 后续如果需要，也可以评估 `uv`，但当前阶段先保持 `conda + pip` 的低门槛方案。
-
-## 初始化命令
+先 clone 仓库并进入目录：
 
 ```powershell
-conda create -n ideaos-agent python=3.13
-conda activate ideaos-agent
+git clone https://github.com/DOSEfree/IdeaOS-agent.git IdeaOS-Agent
+cd IdeaOS-Agent
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-```
-
-## 环境约定
-
-本项目默认开发环境为 Conda 环境 `ideaos-agent`。
-
-说明：
-
-- 新开 PowerShell 终端时，系统仍可能先落在 `base`，这不代表项目环境配置有误
-- 进入本项目后，如需运行 `pytest`、`ruff`、`mypy`、`uvicorn`、诊断脚本或依赖安装命令，应先切换到 `ideaos-agent`
-- 推荐在执行命令前快速确认当前环境，例如检查 `CONDA_DEFAULT_ENV` 是否为 `ideaos-agent`
-- 项目开发、测试与 CI 的 Python 基线统一为 `3.13`
-
-## 本地运行
-
-复制环境变量示例文件后，可以启动最小服务：
-
-```powershell
+python -m pip install .
 copy .env.example .env
 python -m uvicorn ideaos_agent.main:app --reload
 ```
 
-默认健康检查地址：
+说明：
 
-- `http://127.0.0.1:8000/health`
+- 上面的命令按 Windows PowerShell 编写
+- 如果你使用 macOS 或 Linux，请把 `copy .env.example .env` 改成 `cp .env.example .env`
+- 如果你希望隔离环境，可以自行使用 `conda` 或 `venv`，但不是首次体验这个 demo 的必需前提
+
+启动完成后访问：
+
 - `http://127.0.0.1:8000/app`
-- 项目会自动读取根目录 `.env`，因此真实 `API key` 只需保存在本地 `.env` 中，不会进入 GitHub 版本管理
 
-当前入口说明：
+默认配置已经启用了 Fake LLM 和 Fake Archive，因此第一次运行无需配置任何 API Key，即可完整体验整个流程。
 
-- `/app`：极简可用前端界面，可直接输入想法、回答澄清问题、查看分析结果与归档状态
-- `/api/v1/idea-analysis`：后端 JSON 接口，返回分析内容以及 `session_id / archive_status / archive_url`
-- `/api/v1/follow-up/refine`：基于已完成 session 发起一次有界的 follow-up 完善
-- `/api/v1/follow-up/compose-full-plan`：在用户确认局部修改后生成新版完整方案
-- `/api/v1/sessions`：查询最近完成的本地历史会话
-- `/api/v1/sessions/{session_id}`：查看某个历史会话的完整详情
-- `DELETE /api/v1/sessions/{session_id}`：删除一个非 ROOT 正式叶子版本，并级联清理其附着的本地草稿
-- `/api/v1/threads`：查询本地想法链路摘要列表
-- `/api/v1/threads/{root_session_id}`：查看某条链路的节点列表
-- `DELETE /api/v1/threads/{root_session_id}`：删除整条本地想法链路，并 best-effort 清理关联飞书归档
-- `POST /api/v1/threads/sync-remote-archives`：手动刷新远端归档缺失状态并同步清理本地历史
+如果希望接入自己的模型或启用真实飞书归档，可以参考 [SETUP.md](SETUP.md)。
 
-归档相关说明：
+## 项目结构
 
-- `IDEAOS_USE_FAKE_LLM=true` 可在本地使用 fake LLM 体验完整分析流程
-- `IDEAOS_USE_FAKE_ARCHIVE=true` 可在不写入真实飞书的情况下联调归档链路
-- 如需启用真实飞书归档，请确保 `lark-cli` 已安装并完成登录
-
-## 质量检查
-
-```powershell
-python -m pytest
-python -m ruff check .
-python -m ruff format .
-python -m mypy src
+```text
+src/ideaos_agent/
+├── api/
+├── application/
+├── domain/
+├── infrastructure/
+├── presentation/
+├── prompts/
+├── config.py
+├── main.py
+└── models.py
 ```
 
-## 当前检查建议
+项目保持当前分层：`api / application / domain / infrastructure / presentation / prompts`。  
+这让接口、业务编排、领域模型、基础设施适配和前端展示相互解耦，便于后续继续增量演进。
 
-当前阶段建议至少确认以下事项：
+## 运行模式
 
-- 最小 FastAPI 服务可以在本地启动
-- `.env.example` 已覆盖当前环境变量约定
-- `pytest`、`ruff`、`mypy` 能在 Python `3.13` 环境中通过
-- 完成态分析会返回 `session_id / archive_status / archive_url`
-- 开启真实飞书归档后，可为同一会话生成文档并返回链接
-- 基于当前结果发起 follow-up 时，可得到局部完善结果并继续归档
-- 用户确认修改后，可生成新版完整方案且不覆盖原 session
-- `/app` 已呈现 `顶部栏 + 侧边栏 + 工作区` 三段式结构，并可在左侧查看、搜索和展开本地历史
-- `/app` 中可查看当前链路上下文，并从历史节点继续 follow-up
-- 旧版本分支 follow-up 会继续分配新的全局正式版本号，不会重排历史编号
-- 非 ROOT 正式叶子删除会保持 `ROOT` 不可单删、非叶子不可单删的边界
-- 飞书归档正文可展示根会话、父节点与链路上下文
+| 模式   | LLM  | 归档   |
+| ---- | ---- | ---- |
+| 默认体验 | Fake | Fake |
+| 开发调试 | Real | Fake |
+| 完整模式 | Real | Real |
 
-## 下一阶段
+切换方式仅需修改 `.env` 中的环境变量即可，具体配置请参考 [SETUP.md](SETUP.md)。
 
-后续版本将优先评估与推进以下方向：
+## 版本说明
 
-- 左侧历史线程与版本管理体验继续细化
-- 在现有本地历史搜索基础上继续打磨交互和结果命中反馈
-- 账户区域、更多操作入口与前端交互细节的进一步完善
+版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-这些优化会继续遵守当前产品边界：显式历史导航，不等于自动长期记忆，也不引入长期对话产品形态。
+## 为什么是 IdeaOS？
 
-## 版本管理
+我一直觉得，一个真正值得继续投入的想法，并不是在某一次聊天中突然诞生的。
 
-项目版本变更统一记录在根目录的 [CHANGELOG.md](CHANGELOG.md)。
+它更像一个不断演进的过程：提出、澄清、分析、验证、推翻、重建，再逐渐变成可以执行的方案。
+
+IdeaOS 想探索的，不是如何生成更多内容，而是如何帮助一个想法拥有自己的成长过程。
+
+IdeaOS-Agent 是这个方向上的第一次实践 —— 也是我这个小白开发者，第一次在 GitHub 上鼓起勇气迈出的一步。
+
+写到这里，倒不想说太多客套话。我更想说，如果你也有一个正在生长中的想法，欢迎拿它来试试 IdeaOS。
+
+项目还有很多不成熟的地方，但我会让它慢慢变好，希望它有一天，能配得上你的关注与支持。
+
+欢迎各路大佬批评指正。

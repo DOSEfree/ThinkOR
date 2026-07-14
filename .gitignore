@@ -23,6 +23,11 @@ htmlcov/
 .idea/
 .vscode/
 
+# Local-only project materials
+docs/
+.cursor/
+.github/ISSUE_TEMPLATE/docs.md
+
 # OS
 .DS_Store
 Thumbs.db
@@ -34,6 +39,7 @@ Thumbs.db
 
 # Local diagnostics
 debug_runs/*.json
+scripts/run_input_diagnosis.py
 
 # Local archive data
 data/*.db
