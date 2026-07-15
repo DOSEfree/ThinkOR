@@ -30,6 +30,7 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -48,3 +49,14 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.13"
 strict = true
 packages = ["ideaos_agent"]
+
+
+
+
+[tool.setuptools.package-data]
+ideaos_agent = [
+    "presentation/static/*",
+    "presentation/static/**/*",
+    "presentation/templates/*",
+    "presentation/templates/**/*",
+]
