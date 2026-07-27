@@ -12,7 +12,7 @@
       <a class="topbar-logo-link" href="/app" aria-label="{{ app_name }}">
         <img
           class="topbar-logo"
-          src="/static/assets/logo/IdeaOS_logo.png"
+          src="/static/assets/logo/ThinkOR_logo.png"
           alt="{{ app_name }} logo"
         >
       </a>
@@ -23,7 +23,7 @@
     </div>
     <div class="topbar-user">
       <div class="topbar-user-copy">
-        <span class="topbar-user-value">Admin</span>
+        <span class="topbar-user-value">LOCAL WORKSPACE</span>
       </div>
       <div class="topbar-user-avatar-shell" aria-hidden="true">
         <img
@@ -32,7 +32,12 @@
           alt=""
         >
       </div>
-      <button class="topbar-more" type="button" aria-label="Open user menu placeholder">⋯</button>
+      <button
+        class="topbar-more"
+        type="button"
+        aria-label="Open workspace menu placeholder"
+        data-tooltip="工作区菜单 / Workspace menu"
+      >⋯</button>
     </div>
   </header>
 
@@ -48,8 +53,9 @@
             class="sidebar-icon-button"
             id="history-search-toggle"
             type="button"
-            aria-label="Toggle history search placeholder"
+            aria-label="搜索历史"
             aria-expanded="false"
+            data-tooltip="搜索历史 / Search history"
           >
             <img
               class="sidebar-icon"
@@ -61,8 +67,8 @@
             class="sidebar-icon-button sidebar-refresh-button"
             id="history-refresh"
             type="button"
-            aria-label="Refresh session history"
-            title="Refresh session history"
+            aria-label="刷新历史记录"
+            data-tooltip="刷新历史记录 / Refresh history"
           >
             <img
               class="sidebar-icon sidebar-refresh-icon"
@@ -74,8 +80,9 @@
             class="sidebar-icon-button"
             id="sidebar-toggle"
             type="button"
-            aria-label="Collapse sidebar"
+            aria-label="收起侧栏"
             aria-expanded="true"
+            data-tooltip="收起侧栏 / Collapse sidebar"
           >
             <img
               class="sidebar-icon"
@@ -112,17 +119,21 @@
       <div class="workspace-inner">
         <section class="workspace-stage">
           <header class="workspace-header">
-            <h2 class="workspace-title" id="workspace-title">{{ app_name }}</h2>
-            <div class="workspace-signals" aria-label="Current interaction boundaries">
-              <span class="workspace-signal">Single Analysis / 单次分析</span>
-              <span class="workspace-signal">One Clarification / 最多一次澄清</span>
-              <span class="workspace-signal">Feishu Archive / 飞书归档</span>
-            </div>
+            <h2 class="workspace-title" id="workspace-title">
+              {% if app_name == "ThinkOR" %}
+                Think<span class="workspace-title-accent">OR</span>
+              {% else %}
+                {{ app_name }}
+              {% endif %}
+            </h2>
+            <p class="workspace-slogan">
+              Your AI agent for exploring ideas, shaping thoughts, and creating possibilities.
+            </p>
           </header>
 
           <section class="idea-panel" aria-labelledby="idea-panel-title">
             <div class="section-head section-head-single">
-              <h2 class="section-title" id="idea-panel-title">RAW IDEA / 原始想法</h2>
+              <h2 class="section-title" id="idea-panel-title">原始想法 / RAW IDEA</h2>
             </div>
             <form class="idea-form" id="idea-form">
               <textarea
@@ -130,7 +141,7 @@
                 id="idea-content"
                 name="content"
                 rows="8"
-                placeholder="从给 IdeaOS 输入一句想法开始，例如：我想做一个帮助独立开发者快速验证产品想法的工具。"
+                placeholder="输入一句想法以开始，例如：我想做一个帮助独立开发者快速验证产品想法的工具。"
                 required
               ></textarea>
               <div class="idea-actions">
@@ -148,10 +159,7 @@
         >
           <div class="thread-context-head">
             <div>
-              <div class="assumptions-label" id="history-thread-title">CURRENT THREAD / 当前链路</div>
-              <p class="thread-context-copy">
-                Open one completed session to inspect its chain and continue follow-up from that exact version.
-              </p>
+              <div class="assumptions-label" id="history-thread-title">当前链路 / CURRENT THREAD</div>
             </div>
           </div>
           <div class="thread-context-body" id="history-thread-content">
@@ -174,7 +182,7 @@
             <div class="result-placeholder-card">
               <div class="section-head">
                 <span class="section-index">01</span>
-                <h2 class="section-title">RESULT / 结果区</h2>
+                <h2 class="section-title">结果区 / RESULT</h2>
               </div>
               <p class="result-placeholder-copy">
                 提交后，这里将显示澄清问题、完整分析、follow-up 局部完善结果，以及当前会话的归档状态。
@@ -193,6 +201,111 @@
       </div>
     </section>
   </main>
+
+  <div
+    class="loading-dialog hidden"
+    id="loading-dialog"
+    role="status"
+    aria-live="polite"
+    aria-labelledby="loading-dialog-title"
+    aria-describedby="loading-dialog-message"
+  >
+    <div class="loading-dialog-card">
+      <div class="loading-slot-machine" aria-hidden="true">
+        <div class="loading-slot-window">
+          <div class="loading-slot-reel loading-slot-reel-left"><span>✦</span><span>◆</span><span class="loading-slot-gear">⚙</span><span>✦</span><span>◌</span><span>◆</span></div>
+        </div>
+        <div class="loading-slot-window">
+          <div class="loading-slot-reel loading-slot-reel-center"><span>✦</span><span>◈</span><span class="loading-slot-gear">⚙</span><span>✦</span><span>☽</span><span>◈</span></div>
+        </div>
+        <div class="loading-slot-window">
+          <div class="loading-slot-reel loading-slot-reel-right"><span>✦</span><span>◆</span><span class="loading-slot-gear">⚙</span><span>✦</span><span>◉</span><span>◆</span></div>
+        </div>
+        <span class="loading-slot-spark loading-slot-spark-one">✦</span>
+        <span class="loading-slot-spark loading-slot-spark-two">✧</span>
+        <span class="loading-slot-spark loading-slot-spark-three">✦</span>
+        <span class="loading-slot-spark loading-slot-spark-four">✧</span>
+        <span class="loading-slot-spark loading-slot-spark-five">·</span>
+        <span class="loading-slot-spark loading-slot-spark-six">✦</span>
+      </div>
+      <div class="loading-dialog-copy">
+        <p class="loading-dialog-kicker" id="loading-dialog-title">THINKOR 正在构思</p>
+        <p class="loading-dialog-message">
+          <span class="loading-dialog-message-primary" id="loading-dialog-message">正在处理请求</span>
+          <span class="loading-dialog-message-secondary" id="loading-dialog-message-secondary">Processing your request</span>
+        </p>
+        <p class="loading-dialog-elapsed">已用时 <time id="loading-dialog-elapsed">00:00</time></p>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="delete-confirm-dialog hidden"
+    id="delete-confirm-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="delete-confirm-dialog-title"
+    aria-describedby="delete-confirm-dialog-message"
+  >
+    <div class="delete-confirm-dialog-card">
+      <p class="delete-confirm-dialog-kicker">删除确认 / DELETE</p>
+      <h2 id="delete-confirm-dialog-title">确认删除本地版本？</h2>
+      <p id="delete-confirm-dialog-message"></p>
+      <div class="delete-confirm-dialog-actions">
+        <button class="secondary-button" id="delete-confirm-cancel" type="button">取消</button>
+        <button class="delete-confirm-button" id="delete-confirm-submit" type="button">
+          <span class="action-button-icon" aria-hidden="true">×</span>
+          <span>确认删除</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="archive-retry-dialog hidden"
+    id="archive-retry-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="archive-retry-dialog-title"
+    aria-describedby="archive-retry-dialog-message"
+  >
+    <div class="archive-retry-dialog-card">
+      <p class="archive-retry-dialog-kicker">飞书归档失败 / ARCHIVE ERROR</p>
+      <h2 id="archive-retry-dialog-title">检查后再次尝试</h2>
+      <p id="archive-retry-dialog-message"></p>
+      <div class="archive-retry-dialog-actions">
+        <button class="secondary-button" id="archive-retry-close" type="button">暂不重试</button>
+        <button class="primary-button" id="archive-retry-submit" type="button">
+          <span class="action-button-icon" aria-hidden="true">↻</span>
+          <span>再次尝试飞书归档</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="request-retry-dialog hidden"
+    id="request-retry-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="request-retry-dialog-title"
+    aria-describedby="request-retry-dialog-message"
+  >
+    <div class="request-retry-dialog-card">
+      <p class="request-retry-dialog-kicker">请求失败 / REQUEST ERROR</p>
+      <h2 id="request-retry-dialog-title">本地方案未成功生成</h2>
+      <p id="request-retry-dialog-message"></p>
+      <div class="request-retry-dialog-actions">
+        <button class="secondary-button" id="request-retry-close" type="button">暂不重试</button>
+        <button class="primary-button" id="request-retry-submit" type="button">
+          <span class="action-button-icon" aria-hidden="true">↻</span>
+          <span>再次尝试</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-tooltip hidden" id="app-tooltip" role="tooltip" aria-hidden="true"></div>
 
   <script src="/static/app.js" defer></script>
 </body>

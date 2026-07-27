@@ -8,6 +8,7 @@ from ideaos_agent.api.dependencies import get_session_history_service
 from ideaos_agent.application.session_history_service import SessionHistoryService
 from ideaos_agent.domain.errors import SessionNotFoundError, SessionStateError
 from ideaos_agent.models import (
+    ArchiveRetryResponse,
     ArchiveSyncResponse,
     SessionDetailResponse,
     SessionLeafDeleteResponse,
@@ -47,6 +48,27 @@ def get_session_detail(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "session_not_found", "message": str(exc)},
+        ) from exc
+
+
+@router.post("/sessions/{session_id}/retry-archive", response_model=ArchiveRetryResponse)
+def retry_failed_archive(
+    session_id: str,
+    service: SessionHistoryServiceDependency,
+) -> ArchiveRetryResponse:
+    """Retry one completed session whose previous Feishu archive attempt failed."""
+
+    try:
+        return service.retry_failed_archive(session_id)
+    except SessionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "session_not_found", "message": str(exc)},
+        ) from exc
+    except SessionStateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "archive_retry_not_allowed", "message": str(exc)},
         ) from exc
 
 

@@ -1,4 +1,4 @@
-"""Typed API-facing models for IdeaOS-Agent requests and responses."""
+"""Typed API-facing models for ThinkOR requests and responses."""
 
 from datetime import datetime
 
@@ -140,6 +140,10 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
     archive_url: str | None = Field(
         default=None,
         description="Archive URL after a successful archive attempt.",
+    )
+    archive_error: str | None = Field(
+        default=None,
+        description="Safe, user-actionable error detail after a failed archive attempt.",
     )
 
     @field_validator("session_id", "root_session_id", "parent_session_id", "archive_url")
@@ -562,6 +566,34 @@ class ArchiveSyncResponse(BaseModel):
         return normalized_ids
 
 
+class ArchiveRetryResponse(BaseModel):
+    """Response returned after retrying one previously failed Feishu archive."""
+
+    session_id: str = Field(min_length=1, description="Session whose archive was retried.")
+    archive_status: ArchiveStatus = Field(description="Final status of the retry attempt.")
+    archive_url: str | None = Field(
+        default=None,
+        description="Archive URL when the retry succeeds.",
+    )
+    archive_error: str | None = Field(
+        default=None,
+        description="Safe, user-actionable error detail when the retry still fails.",
+    )
+    archived_at: datetime = Field(description="Time when the retry attempt completed.")
+
+    @field_validator("session_id", "archive_url", "archive_error")
+    @classmethod
+    def validate_retry_text_not_blank(cls, value: str | None) -> str | None:
+        """Reject blank retry response text."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Archive retry response text must not be blank.")
+        return normalized
+
+
 class ThreadDeleteResponse(BaseModel):
     """Response returned after deleting one local thread and its linked archives."""
 
@@ -672,6 +704,10 @@ class SessionDetailResponse(BaseModel):
         default=None,
         description="Archive URL after a successful archive attempt.",
     )
+    archive_error: str | None = Field(
+        default=None,
+        description="Safe, user-actionable error detail after a failed archive attempt.",
+    )
     archive_title: str = Field(min_length=1, description="Semantic archive title.")
     original_content: str = Field(min_length=1, description="Root/original idea content.")
     input_echo: str = Field(min_length=1, description="Faithful current input echo.")
@@ -725,6 +761,7 @@ class SessionDetailResponse(BaseModel):
         "root_session_id",
         "parent_session_id",
         "archive_url",
+        "archive_error",
         "archive_title",
         "original_content",
         "input_echo",

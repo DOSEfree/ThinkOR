@@ -27,6 +27,7 @@ htmlcov/
 docs/
 .cursor/
 .github/ISSUE_TEMPLATE/docs.md
+临时文件夹-ThinkOR/
 
 # OS
 .DS_Store

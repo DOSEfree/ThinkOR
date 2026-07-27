@@ -121,13 +121,23 @@ class InMemoryArchiver:
     """Simple delete-capable archiver for history-service unit tests."""
 
     def __init__(self) -> None:
+        self.archive_payloads: list[SessionArchivePayload] = []
+        self.archive_results: list[ArchiveResult] = []
         self.deleted_urls: list[str] = []
         self.probe_results: dict[str, bool | None] = {}
         self.probe_failures: dict[str, str] = {}
 
     def archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
-        del payload
-        raise AssertionError("History service tests should not call archive_session.")
+        self.archive_payloads.append(payload)
+        if self.archive_results:
+            return self.archive_results.pop(0)
+        archived_at = datetime.now(UTC)
+        return ArchiveResult(
+            archive_status=ArchiveStatus.SUCCEEDED,
+            archive_url=f"https://feishu.example.com/docx/{payload.session_id}",
+            archive_error=None,
+            archived_at=archived_at,
+        )
 
     def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
         self.deleted_urls.append(archive_url)
@@ -902,6 +912,56 @@ def test_sync_remote_archive_deletions_keeps_local_history_on_probe_error() -> N
     assert len(response.probe_failures) == 1
     assert response.probe_failures[0].archive_url.endswith("sess_composed")
     assert response.probe_failures[0].error == "temporary inspect failure"
+
+
+def test_retry_failed_archive_reuses_snapshot_without_creating_a_session() -> None:
+    service = build_service()
+    archive_store = service._session_archive_store
+    snapshot_store = service._session_snapshot_store
+    archiver = service._session_archiver
+    assert isinstance(archive_store, InMemoryArchiveStore)
+    assert isinstance(snapshot_store, InMemorySnapshotStore)
+    assert isinstance(archiver, InMemoryArchiver)
+
+    failed_record = archive_store.get_session_record("sess_composed")
+    assert failed_record is not None
+    failed_at = datetime.now(UTC)
+    archive_store.save_session_record(
+        failed_record.model_copy(
+            update={
+                "archive_status": ArchiveStatus.FAILED,
+                "archive_url": None,
+                "archive_error": "need_user_authorization",
+                "archived_at": failed_at,
+                "updated_at": failed_at,
+            }
+        )
+    )
+
+    response = service.retry_failed_archive("sess_composed")
+
+    assert response.session_id == "sess_composed"
+    assert response.archive_status == ArchiveStatus.SUCCEEDED
+    assert response.archive_url == "https://feishu.example.com/docx/sess_composed"
+    assert response.archive_error is None
+    assert len(archiver.archive_payloads) == 1
+    assert archiver.archive_payloads[0].session_id == "sess_composed"
+    assert archiver.archive_payloads[0].parent_archive_url.endswith("sess_root")
+    assert len(snapshot_store.snapshots) == 3
+    persisted_record = archive_store.get_session_record("sess_composed")
+    assert persisted_record is not None
+    assert persisted_record.archive_status == ArchiveStatus.SUCCEEDED
+
+
+def test_retry_failed_archive_rejects_non_failed_sessions() -> None:
+    service = build_service()
+
+    try:
+        service.retry_failed_archive("sess_root")
+    except SessionStateError as exc:
+        assert str(exc) == "Only failed Feishu archives can be retried."
+    else:
+        raise AssertionError("Expected retry on a successful archive to be rejected.")
 
     thread = service.get_thread("sess_root")
     assert [item.session_id for item in thread.items] == [

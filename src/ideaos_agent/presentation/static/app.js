@@ -17,39 +17,65 @@ const historyThreadContent = document.getElementById("history-thread-content");
 const resultShell = document.getElementById("result-shell");
 const workspaceBusy = document.getElementById("workspace-busy");
 const workspaceBusyText = document.getElementById("workspace-busy-text");
+const loadingDialog = document.getElementById("loading-dialog");
+const loadingDialogMessage = document.getElementById("loading-dialog-message");
+const loadingDialogMessageSecondary = document.getElementById("loading-dialog-message-secondary");
+const loadingDialogElapsed = document.getElementById("loading-dialog-elapsed");
+const deleteConfirmDialog = document.getElementById("delete-confirm-dialog");
+const deleteConfirmDialogMessage = document.getElementById("delete-confirm-dialog-message");
+const deleteConfirmCancelButton = document.getElementById("delete-confirm-cancel");
+const deleteConfirmSubmitButton = document.getElementById("delete-confirm-submit");
+const archiveRetryDialog = document.getElementById("archive-retry-dialog");
+const archiveRetryDialogMessage = document.getElementById("archive-retry-dialog-message");
+const archiveRetryCloseButton = document.getElementById("archive-retry-close");
+const archiveRetrySubmitButton = document.getElementById("archive-retry-submit");
+const requestRetryDialog = document.getElementById("request-retry-dialog");
+const requestRetryDialogMessage = document.getElementById("request-retry-dialog-message");
+const requestRetryCloseButton = document.getElementById("request-retry-close");
+const requestRetrySubmitButton = document.getElementById("request-retry-submit");
 const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
+const appTooltip = document.getElementById("app-tooltip");
 
 let currentSessionId = null;
 let currentView = null;
 let currentSessionContext = null;
 let selectedHistorySessionId = null;
 let selectedThreadRootSessionId = null;
+let isViewingHistoryDetail = false;
 let isSubmitting = false;
 let activeLoadingButton = null;
 let historyThreadSummaries = [];
 let historyScrollIndicatorTimeoutId = null;
 let historySearchDebounceTimeoutId = null;
 let currentHistorySearchQuery = "";
+let loadingStartedAt = null;
+let loadingElapsedTimerId = null;
+let archiveRetrySessionId = null;
+let failedRequestRetry = null;
+let pendingDeleteAction = null;
 
 const expandedHistoryRootIds = new Set();
 const historyThreadCache = new Map();
 const historyThreadLoadErrors = new Map();
 const loadingHistoryRootIds = new Set();
 
-const DEFAULT_WORKSPACE_BUSY_MESSAGE = "Analysis is running. Please keep this workspace open.";
+const DEFAULT_WORKSPACE_BUSY_MESSAGE = {
+  primary: "正在生成方案",
+  secondary: "Generating your plan",
+};
 
 const ANALYSIS_FIELDS = [
-  ["01", "SUMMARY / 摘要", "summary", "copy", "analysis-span-12"],
-  ["02", "FEASIBILITY / 可行性", "feasibility", "copy", "analysis-span-12"],
-  ["03", "MARKET / 市场判断", "market", "copy", "analysis-span-12"],
-  ["04", "KNOWLEDGE GAPS / 认知缺口", "knowledge_gaps", "list", "analysis-span-12"],
-  ["05", "RESOURCE GAPS / 资源缺口", "resource_gaps", "list", "analysis-span-12"],
-  ["06", "TEAM REQUIREMENTS / 团队需求", "team_requirements", "list", "analysis-span-12"],
-  ["07", "SIMILAR PROJECTS / 相似项目", "similar_projects", "list", "analysis-span-12"],
-  ["08", "MVP ROADMAP / MVP 路线图", "mvp_roadmap", "list", "analysis-span-12"],
-  ["09", "LONG-TERM ROADMAP / 长期路线图", "long_term_roadmap", "list", "analysis-span-12"],
+  ["01", "摘要 / SUMMARY", "summary", "copy", "analysis-span-12"],
+  ["02", "可行性 / FEASIBILITY", "feasibility", "copy", "analysis-span-12"],
+  ["03", "市场判断 / MARKET", "market", "copy", "analysis-span-12"],
+  ["04", "认知缺口 / KNOWLEDGE GAPS", "knowledge_gaps", "list", "analysis-span-12"],
+  ["05", "资源缺口 / RESOURCE GAPS", "resource_gaps", "list", "analysis-span-12"],
+  ["06", "团队需求 / TEAM REQUIREMENTS", "team_requirements", "list", "analysis-span-12"],
+  ["07", "相似项目 / SIMILAR PROJECTS", "similar_projects", "list", "analysis-span-12"],
+  ["08", "MVP 路线图 / MVP ROADMAP", "mvp_roadmap", "list", "analysis-span-12"],
+  ["09", "长期路线图 / LONG-TERM ROADMAP", "long_term_roadmap", "list", "analysis-span-12"],
 ];
 
 const SECTION_DISPLAY_LABELS = Object.fromEntries(
@@ -114,11 +140,50 @@ resetButton.addEventListener("click", () => {
 initializeUi();
 void initializeHistory();
 
+if (archiveRetryCloseButton instanceof HTMLButtonElement) {
+  archiveRetryCloseButton.addEventListener("click", hideArchiveRetryDialog);
+}
+
+if (archiveRetrySubmitButton instanceof HTMLButtonElement) {
+  archiveRetrySubmitButton.addEventListener("click", () => {
+    void retryFailedArchive();
+  });
+}
+
+if (requestRetryCloseButton instanceof HTMLButtonElement) {
+  requestRetryCloseButton.addEventListener("click", hideRequestRetryDialog);
+}
+
+if (requestRetrySubmitButton instanceof HTMLButtonElement) {
+  requestRetrySubmitButton.addEventListener("click", () => {
+    const retryAction = failedRequestRetry;
+    if (typeof retryAction === "function") {
+      hideRequestRetryDialog();
+      void retryAction();
+    }
+  });
+}
+
+if (deleteConfirmCancelButton instanceof HTMLButtonElement) {
+  deleteConfirmCancelButton.addEventListener("click", hideDeleteConfirmation);
+}
+
+if (deleteConfirmSubmitButton instanceof HTMLButtonElement) {
+  deleteConfirmSubmitButton.addEventListener("click", () => {
+    const deleteAction = pendingDeleteAction;
+    hideDeleteConfirmation();
+    if (typeof deleteAction === "function") {
+      void deleteAction();
+    }
+  });
+}
+
 function initializeUi() {
   setSidebarCollapsed(false);
   setSearchPanelVisible(false);
   setWorkspaceMode("empty");
   initializeHistoryScrollIndicator();
+  initializeAppTooltips();
 
   if (historySearchToggleButton instanceof HTMLButtonElement) {
     historySearchToggleButton.addEventListener("click", () => {
@@ -161,6 +226,87 @@ function initializeUi() {
       }
       setSidebarCollapsed(shouldCollapse);
     });
+  }
+}
+
+function initializeAppTooltips() {
+  document.addEventListener("pointerover", (event) => {
+    const tooltipTarget = getTooltipTarget(event.target);
+    if (tooltipTarget !== null) {
+      showAppTooltip(tooltipTarget);
+    }
+  });
+
+  document.addEventListener("pointerout", (event) => {
+    const tooltipTarget = getTooltipTarget(event.target);
+    const relatedTooltipTarget = getTooltipTarget(event.relatedTarget);
+    if (tooltipTarget !== null && tooltipTarget !== relatedTooltipTarget) {
+      hideAppTooltip();
+    }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const tooltipTarget = getTooltipTarget(event.target);
+    if (tooltipTarget !== null) {
+      showAppTooltip(tooltipTarget);
+    }
+  });
+
+  document.addEventListener("focusout", (event) => {
+    const tooltipTarget = getTooltipTarget(event.target);
+    const relatedTooltipTarget = getTooltipTarget(event.relatedTarget);
+    if (tooltipTarget !== null && tooltipTarget !== relatedTooltipTarget) {
+      hideAppTooltip();
+    }
+  });
+
+  document.addEventListener("scroll", hideAppTooltip, true);
+  window.addEventListener("resize", hideAppTooltip);
+}
+
+function getTooltipTarget(target) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  const tooltipTarget = target.closest("[data-tooltip]");
+  if (!(tooltipTarget instanceof HTMLElement) || !tooltipTarget.dataset.tooltip?.trim()) {
+    return null;
+  }
+  return tooltipTarget;
+}
+
+function showAppTooltip(target) {
+  if (!(appTooltip instanceof HTMLElement)) {
+    return;
+  }
+  const copy = target.dataset.tooltip?.trim();
+  if (!copy) {
+    return;
+  }
+
+  appTooltip.textContent = copy;
+  appTooltip.classList.remove("hidden", "is-above");
+  appTooltip.setAttribute("aria-hidden", "false");
+
+  const targetBounds = target.getBoundingClientRect();
+  const tooltipBounds = appTooltip.getBoundingClientRect();
+  const viewportPadding = 12;
+  const left = Math.min(
+    Math.max(targetBounds.left + (targetBounds.width / 2), viewportPadding + (tooltipBounds.width / 2)),
+    window.innerWidth - viewportPadding - (tooltipBounds.width / 2),
+  );
+  const preferredTop = targetBounds.bottom + 10;
+  const shouldShowAbove = preferredTop + tooltipBounds.height > window.innerHeight - viewportPadding;
+
+  appTooltip.style.left = `${left}px`;
+  appTooltip.style.top = `${shouldShowAbove ? targetBounds.top - 10 : preferredTop}px`;
+  appTooltip.classList.toggle("is-above", shouldShowAbove);
+}
+
+function hideAppTooltip() {
+  if (appTooltip instanceof HTMLElement) {
+    appTooltip.classList.add("hidden");
+    appTooltip.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -216,47 +362,59 @@ resultContent.addEventListener("click", async (event) => {
   if (!(target instanceof HTMLElement)) {
     return;
   }
+  const actionTarget = target.closest("[data-action]");
+  if (!(actionTarget instanceof HTMLElement) || !resultContent.contains(actionTarget)) {
+    return;
+  }
   if (isSubmitting) {
     return;
   }
 
-  if (target.matches("[data-action='reset']")) {
+  if (actionTarget.matches("[data-action='reset']")) {
     form.reset();
     clearResult();
     textarea.focus();
     return;
   }
 
-  if (target.matches("[data-action='rerun-analysis']")) {
-    await handleClarificationRerun(target);
+  if (actionTarget.matches("[data-action='rerun-analysis']")) {
+    await handleClarificationRerun(actionTarget);
     return;
   }
 
-  if (target.matches("[data-action='start-follow-up']")) {
+  if (actionTarget.matches("[data-action='start-follow-up']")) {
     renderFollowUpComposer();
     return;
   }
 
-  if (target.matches("[data-action='restore-follow-up-draft']")) {
-    const sessionId = target.getAttribute("data-session-id");
+  if (actionTarget.matches("[data-action='restore-follow-up-draft']")) {
+    const sessionId = actionTarget.getAttribute("data-session-id");
     if (sessionId) {
       await openHistorySession(sessionId);
     }
     return;
   }
 
-  if (target.matches("[data-action='submit-follow-up']")) {
-    await handleFollowUpRefine(target);
+  if (actionTarget.matches("[data-action='submit-follow-up']")) {
+    await handleFollowUpRefine(actionTarget);
     return;
   }
 
-  if (target.matches("[data-action='rerun-follow-up']")) {
-    await handleFollowUpClarificationRerun(target);
+  if (actionTarget.matches("[data-action='rerun-follow-up']")) {
+    await handleFollowUpClarificationRerun(actionTarget);
     return;
   }
 
-  if (target.matches("[data-action='compose-full-plan']")) {
-    await handleComposeFullPlan(target);
+  if (actionTarget.matches("[data-action='compose-full-plan']")) {
+    await handleComposeFullPlan(actionTarget);
+    return;
+  }
+
+  if (actionTarget.matches("[data-action='open-archive-retry']")) {
+    const sessionId = actionTarget.getAttribute("data-session-id");
+    if (sessionId) {
+      await openArchiveRetryDialog(sessionId);
+    }
   }
 });
 
@@ -371,7 +529,11 @@ async function handleComposeFullPlan(triggerButton) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      renderApiError(data, "生成新版完整方案失败，请稍后重试。");
+      renderRetryableApiError(
+        data,
+        "生成新版完整方案失败，请稍后重试。",
+        () => handleComposeFullPlan(null),
+      );
       return;
     }
 
@@ -383,6 +545,7 @@ async function handleComposeFullPlan(triggerButton) {
       clarifications: [],
     };
     renderComposedPlanView(data);
+    scrollWorkspaceToTop();
     await refreshHistoryAfterMutation(data);
   } catch (error) {
     renderError(error instanceof Error ? error.message : "网络异常，请稍后重试。");
@@ -406,7 +569,11 @@ async function submitIdea(payload, loadingLabel, triggerButton) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      renderApiError(data, "请求失败，请稍后重试。");
+      renderRetryableApiError(
+        data,
+        "请求失败，请稍后重试。",
+        () => submitIdea(payload, loadingLabel, null),
+      );
       return;
     }
 
@@ -458,7 +625,11 @@ async function submitFollowUpRefine(payload, loadingLabel, triggerButton) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      renderApiError(data, "继续完善失败，请稍后重试。");
+      renderRetryableApiError(
+        data,
+        "继续完善失败，请稍后重试。",
+        () => submitFollowUpRefine(payload, loadingLabel, null),
+      );
       return;
     }
 
@@ -795,12 +966,12 @@ function renderHistoryThreadSummary(item) {
           data-action="toggle-history-thread"
           data-root-session-id="${escapeHtml(item.root_session_id)}"
           aria-label="${isExpanded ? "收起版本" : "展开版本"}"
-          title="${isExpanded ? "收起版本 / Collapse versions" : "展开版本 / Expand versions"}"
+          data-tooltip="${isExpanded ? "收起版本 / Collapse versions" : "展开版本 / Expand versions"}"
         >
           ${isExpanded ? "▾" : "▸"}
         </button>
         <div class="history-folder-copy">
-          <h3 class="history-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(displayTitle)}</h3>
+          <h3 class="history-item-title" data-tooltip="${escapeHtml(fullTitle)}">${escapeHtml(displayTitle)}</h3>
           <div class="history-folder-meta">
             <span class="history-count-badge">${escapeHtml(versionsLabel)}</span>
             <p class="history-item-copy history-folder-updated">Latest ${escapeHtml(formatDateTime(item.latest_updated_at))}</p>
@@ -814,7 +985,7 @@ function renderHistoryThreadSummary(item) {
             data-action="open-history-session"
             data-session-id="${escapeHtml(item.latest_session_id)}"
             aria-label="打开最新版本"
-            title="打开最新版本 / Open latest version"
+            data-tooltip="打开最新版本 / Open latest version"
           >
             ↗
           </button>
@@ -824,7 +995,7 @@ function renderHistoryThreadSummary(item) {
             data-action="delete-history-thread"
             data-root-session-id="${escapeHtml(item.root_session_id)}"
             aria-label="删除这条想法线程"
-            title="删除这条想法线程并尝试清理关联飞书归档 / Delete thread"
+            data-tooltip="删除这条想法线程并尝试清理关联飞书归档 / Delete thread"
           >
             ×
           </button>
@@ -904,7 +1075,7 @@ function renderHistoryVersionItem(item, index) {
             data-action="open-history-session"
             data-session-id="${escapeHtml(item.session_id)}"
             aria-label="打开这个版本"
-            title="打开这个版本 / Open this version"
+            data-tooltip="打开这个版本 / Open this version"
           >
             ↗
           </button>
@@ -923,6 +1094,7 @@ function renderHistoryVersionDeleteAction(item) {
   const deleteBlockReason = typeof item.delete_block_reason === "string"
     ? item.delete_block_reason
     : "Only leaf versions can be deleted individually.";
+
   if (item.can_delete_leaf === true) {
     return `
       <button
@@ -931,7 +1103,7 @@ function renderHistoryVersionDeleteAction(item) {
         data-action="delete-history-session"
         data-session-id="${escapeHtml(item.session_id)}"
         aria-label="删除这个版本"
-        title="删除这个 formal 叶子版本，并级联清理挂在它下面的本地 draft / Delete version"
+        data-tooltip="删除这个版本 / Delete version"
       >
         ×
       </button>
@@ -945,7 +1117,7 @@ function renderHistoryVersionDeleteAction(item) {
       aria-disabled="true"
       tabindex="-1"
       aria-label="${escapeHtml(deleteBlockReason)}"
-      title="${escapeHtml(deleteBlockReason)}"
+      data-tooltip="${escapeHtml(deleteBlockReason)}"
     >
       ×
     </button>
@@ -958,13 +1130,13 @@ async function handleDeleteHistorySession(sessionId, triggerButton) {
     return;
   }
 
-  const confirmed = window.confirm(
-    "Delete this formal leaf version from local SQLite and clean any attached local follow-up drafts?",
+  showDeleteConfirmation(
+    "将从本地历史中删除该叶子版本，并清理其关联的本地 follow-up 草稿。此操作无法撤销。",
+    () => deleteHistorySession(normalizedSessionId, triggerButton),
   );
-  if (!confirmed) {
-    return;
-  }
+}
 
+async function deleteHistorySession(sessionId, triggerButton) {
   setLoadingState(true, "DELETE VERSION", triggerButton);
   clearFeedback();
 
@@ -1026,13 +1198,13 @@ async function handleDeleteHistoryThread(rootSessionId, triggerButton) {
     return;
   }
 
-  const confirmed = window.confirm(
-    "Delete this idea thread from local SQLite and attempt to delete its linked Feishu docs?",
+  showDeleteConfirmation(
+    "将删除这条本地想法链路，并尝试清理关联的飞书文档。此操作无法撤销。",
+    () => deleteHistoryThread(normalizedRootSessionId, triggerButton),
   );
-  if (!confirmed) {
-    return;
-  }
+}
 
+async function deleteHistoryThread(rootSessionId, triggerButton) {
   setLoadingState(true, "DELETE THREAD", triggerButton);
   clearFeedback();
 
@@ -1062,6 +1234,26 @@ async function handleDeleteHistoryThread(rootSessionId, triggerButton) {
     renderError("Failed to delete thread.");
   } finally {
     setLoadingState(false, "分析 / ANALYZE", triggerButton);
+  }
+}
+
+function showDeleteConfirmation(message, deleteAction) {
+  if (!(deleteConfirmDialog instanceof HTMLElement)) {
+    return;
+  }
+
+  pendingDeleteAction = deleteAction;
+  if (deleteConfirmDialogMessage instanceof HTMLElement) {
+    deleteConfirmDialogMessage.textContent = message;
+  }
+  deleteConfirmDialog.classList.remove("hidden");
+  deleteConfirmSubmitButton?.focus();
+}
+
+function hideDeleteConfirmation() {
+  pendingDeleteAction = null;
+  if (deleteConfirmDialog instanceof HTMLElement) {
+    deleteConfirmDialog.classList.add("hidden");
   }
 }
 
@@ -1139,7 +1331,7 @@ function renderThreadView(payload) {
   setThreadContextVisible(true);
   historyThreadContent.innerHTML = `
     <section class="thread-panel-headline">
-      <div class="assumptions-label">THREAD ROOT / 根链路</div>
+      <div class="assumptions-label">根链路 / THREAD ROOT</div>
       <h3 class="thread-title">${escapeHtml(rootTitle)}</h3>
       <div class="thread-context-grid">
         <article class="thread-context-stat">
@@ -1160,14 +1352,10 @@ function renderThreadView(payload) {
         </article>
       </div>
       <p class="thread-meta-copy">
-        Linear sidebar order stays global. Relationship markers such as
-        <span class="thread-inline-emphasis">from V01</span>
-        show the actual parent version.
+        Root session ${escapeHtml(payload.root_session_id || "")} (${escapeHtml(String(items.length))})
       </p>
-      <p class="thread-meta-copy">Root session ${escapeHtml(payload.root_session_id || "")}</p>
-      <p class="thread-meta-copy">Contains ${escapeHtml(String(items.length))} session nodes.</p>
     </section>
-    <div class="history-list">
+    <div class="thread-node-list">
       ${items.map((item) => renderThreadItem(item)).join("")}
     </div>
   `;
@@ -1175,52 +1363,25 @@ function renderThreadView(payload) {
 
 function renderThreadItem(item) {
   const isActive = item.session_id === selectedHistorySessionId;
-  const archiveBadge = renderHistoryArchiveBadge(item.archive_status);
   const versionLabel = formatFormalVersionLabel(item);
-  const relationshipLabel = formatParentFormalVersionLabel(item.parent_formal_version_number);
-  const relationshipCopy = relationshipLabel
-    ? `<span class="thread-version-link">${escapeHtml(relationshipLabel)}</span>`
-    : "";
-  const continueAction = item.can_continue_follow_up
-    ? `
-      <button
-        class="history-thread-action"
-        type="button"
-        data-action="continue-history-follow-up"
-        data-session-id="${escapeHtml(item.session_id)}"
-      >
-        从这里继续 / CONTINUE HERE
-      </button>
-    `
+  const parentVersionLabel = formatParentFormalVersionLabel(item.parent_formal_version_number);
+  const relationship = parentVersionLabel
+    ? `<span class="thread-node-parent">${escapeHtml(parentVersionLabel)}</span>`
     : "";
 
   return `
-    <article class="thread-item ${isActive ? "is-active" : ""}">
-      <div class="thread-item-head">
-        <div>
-          <div class="thread-item-version-row">
-            <div class="history-version-order thread-version-order">${escapeHtml(versionLabel)}</div>
-            ${relationshipCopy}
-          </div>
-          <h3 class="thread-item-title">${escapeHtml(item.archive_title || "Untitled Session")}</h3>
-          <p class="thread-meta-copy">${escapeHtml(formatSessionKindLabel(item.session_kind))}</p>
-        </div>
-        ${archiveBadge}
-      </div>
-      <p class="thread-meta-copy">Session ${escapeHtml(item.session_id)}</p>
-      <p class="thread-meta-copy">Updated ${escapeHtml(formatDateTime(item.updated_at))}</p>
-      <div class="thread-item-actions">
-        <button
-          class="history-thread-action"
-          type="button"
-          data-action="open-history-session"
-          data-session-id="${escapeHtml(item.session_id)}"
-        >
-          查看结果 / VIEW RESULT
-        </button>
-        ${continueAction}
-      </div>
-    </article>
+    <button
+      class="thread-node-button ${isActive ? "is-active" : ""}"
+      type="button"
+      data-action="open-history-session"
+      data-session-id="${escapeHtml(item.session_id)}"
+    >
+      <span class="thread-node-version-group">
+        <span class="thread-node-version">${escapeHtml(versionLabel)}</span>
+        ${relationship}
+      </span>
+      <span class="thread-node-time">${escapeHtml(formatDateTime(item.updated_at))}</span>
+    </button>
   `;
 }
 
@@ -1228,6 +1389,7 @@ function renderHistoryDetail(detail) {
   const sessionKind = typeof detail.session_kind === "string" ? detail.session_kind : "analysis";
   const clarifications = Array.isArray(detail.clarifications) ? detail.clarifications : [];
   currentSessionContext = extractSessionContext(detail);
+  isViewingHistoryDetail = true;
 
   if (sessionKind === "analysis") {
     currentView = {
@@ -1237,10 +1399,7 @@ function renderHistoryDetail(detail) {
       clarifications,
     };
     renderAnalysisView(detail, detail.original_content, clarifications);
-    return;
-  }
-
-  if (sessionKind === "follow_up_refinement") {
+  } else if (sessionKind === "follow_up_refinement") {
     currentView = {
       kind: "follow_up_refinement",
       sessionId: detail.session_id,
@@ -1249,16 +1408,17 @@ function renderHistoryDetail(detail) {
       followUpQuestion: detail.follow_up_question || "",
     };
     renderRefinementView(detail);
-    return;
+  } else {
+    currentView = {
+      kind: "full_plan_composed",
+      sessionId: detail.session_id,
+      rawContent: detail.original_content,
+      clarifications,
+    };
+    renderComposedPlanView(detail);
   }
 
-  currentView = {
-    kind: "full_plan_composed",
-    sessionId: detail.session_id,
-    rawContent: detail.original_content,
-    clarifications,
-  };
-  renderComposedPlanView(detail);
+  setWorkspaceMode("history-detail");
 }
 
 function populateInputFromDetail(detail) {
@@ -1284,7 +1444,7 @@ function renderClarificationView(payload, rawContent) {
     ${renderAssumptions(assumptions)}
     <section class="questions-shell">
       <div class="section-head section-head-single">
-        <h2 class="section-title">OPEN QUESTIONS / 关键澄清</h2>
+        <h2 class="section-title">关键澄清 / OPEN QUESTIONS</h2>
       </div>
       <div class="questions-grid">${questions}</div>
       <div class="result-actions">
@@ -1320,12 +1480,7 @@ function renderAnalysisView(payload, rawContent, clarifications) {
     </section>
     ${followup}
     ${draftRecovery}
-    ${renderFollowUpEntry()}
-    <div class="result-actions">
-      <button class="secondary-button" type="button" data-action="reset">
-        重新开始 / RESET
-      </button>
-    </div>
+    ${renderFollowUpActions()}
   `;
   showContent();
 }
@@ -1339,16 +1494,17 @@ function renderFollowUpComposer() {
   }
   const existingComposer = resultContent.querySelector("[data-follow-up-composer]");
   if (existingComposer instanceof HTMLElement) {
+    existingComposer.scrollIntoView({behavior: "smooth", block: "center"});
     const existingInput = existingComposer.querySelector("[data-follow-up-input]");
     if (existingInput instanceof HTMLTextAreaElement) {
-      existingInput.focus();
+      existingInput.focus({preventScroll: true});
     }
     return;
   }
 
   const composer = `
     <section class="followup-block" data-follow-up-composer>
-      <div class="assumptions-label">FOLLOW-UP / 继续完善方案</div>
+      <div class="assumptions-label">继续完善方案 / FOLLOW-UP</div>
       <p class="analysis-copy">
         基于当前这版完整分析，输入你想继续追问、收窄或修改的方向。系统会先返回局部完善结果，
         你再决定是否确认修改并生成新版完整方案。
@@ -1356,7 +1512,7 @@ function renderFollowUpComposer() {
       <textarea
         class="question-input"
         rows="5"
-        placeholder="例如：我想把目标用户进一步收窄到没有产品背景的独立开发者。"
+        placeholder="例如：请优先打磨这个方案的核心路径、验证方式或落地边界。"
         data-follow-up-input
       ></textarea>
       <div class="result-actions">
@@ -1368,6 +1524,14 @@ function renderFollowUpComposer() {
   `;
 
   resultContent.insertAdjacentHTML("beforeend", composer);
+  const composerElement = resultContent.querySelector("[data-follow-up-composer]");
+  if (composerElement instanceof HTMLElement) {
+    composerElement.scrollIntoView({behavior: "smooth", block: "center"});
+    const composerInput = composerElement.querySelector("[data-follow-up-input]");
+    if (composerInput instanceof HTMLTextAreaElement) {
+      composerInput.focus({preventScroll: true});
+    }
+  }
 }
 
 function renderDraftRecoveryBlock(payload) {
@@ -1389,7 +1553,7 @@ function renderDraftRecoveryBlock(payload) {
 
   return `
     <section class="followup-block followup-draft-recovery">
-      <div class="assumptions-label">LOCAL DRAFT / 可恢复草稿</div>
+      <div class="assumptions-label">可恢复草稿 / LOCAL DRAFT</div>
       <p class="analysis-copy">${escapeHtml(draftQuestion)}</p>
       <p class="analysis-copy">This draft stays in local SQLite for 7 days unless you confirm compose or let it expire.</p>
       <div class="result-actions">
@@ -1421,12 +1585,12 @@ function renderFollowUpClarificationView(payload, followUpQuestion) {
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
     <section class="input-echo">
-      <div class="assumptions-label">FOLLOW-UP QUESTION / 继续完善问题</div>
+      <div class="assumptions-label">继续完善问题 / FOLLOW-UP QUESTION</div>
       <p class="analysis-copy">${escapeHtml(followUpQuestion)}</p>
     </section>
     <section class="questions-shell">
       <div class="section-head section-head-single">
-        <h2 class="section-title">OPEN QUESTIONS / 继续澄清</h2>
+        <h2 class="section-title">继续澄清 / OPEN QUESTIONS</h2>
       </div>
       <div class="questions-grid">${questions}</div>
       <div class="result-actions">
@@ -1462,41 +1626,41 @@ function renderRefinementView(payload) {
     ${renderAssumptions(assumptions)}
     <section class="analysis-shell">
       <div class="section-head section-head-single">
-        <h2 class="section-title">REFINEMENT RESULT / 局部完善结果</h2>
+        <h2 class="section-title">局部完善结果 / REFINEMENT RESULT</h2>
       </div>
       <div class="analysis-grid">
         <section class="analysis-section analysis-span-12">
           <div class="analysis-heading">
             <div class="analysis-index">01</div>
-            <h3 class="analysis-title">QUESTION SUMMARY / 问题摘要</h3>
+            <h3 class="analysis-title">问题摘要 / QUESTION SUMMARY</h3>
           </div>
           <p class="analysis-copy">${escapeHtml(refinement.question_summary || "N/A")}</p>
         </section>
         <section class="analysis-section analysis-span-12">
           <div class="analysis-heading">
             <div class="analysis-index">02</div>
-            <h3 class="analysis-title">REFINEMENT ANSWER / 局部完善回答</h3>
+            <h3 class="analysis-title">局部完善回答 / REFINEMENT ANSWER</h3>
           </div>
           <p class="analysis-copy">${escapeHtml(refinement.refinement_answer || "N/A")}</p>
         </section>
         <section class="analysis-section analysis-span-12">
           <div class="analysis-heading">
             <div class="analysis-index">03</div>
-            <h3 class="analysis-title">AFFECTED SECTIONS / 受影响板块</h3>
+            <h3 class="analysis-title">受影响板块 / AFFECTED SECTIONS</h3>
           </div>
           ${renderArrayBlock(affectedSections)}
         </section>
         <section class="analysis-section analysis-span-12">
           <div class="analysis-heading">
             <div class="analysis-index">04</div>
-            <h3 class="analysis-title">PROPOSED SECTION UPDATES / 建议修改内容</h3>
+            <h3 class="analysis-title">建议修改内容 / PROPOSED SECTION UPDATES</h3>
           </div>
           ${renderSectionUpdates(updates)}
         </section>
         <section class="analysis-section analysis-span-12">
           <div class="analysis-heading">
             <div class="analysis-index">05</div>
-            <h3 class="analysis-title">NEXT ACTIONS / 后续动作</h3>
+            <h3 class="analysis-title">后续动作 / NEXT ACTIONS</h3>
           </div>
           <ul class="analysis-list">${nextActions}</ul>
         </section>
@@ -1506,9 +1670,7 @@ function renderRefinementView(payload) {
       <button class="question-submit" type="button" data-action="compose-full-plan">
         确认修改并生成新版完整方案
       </button>
-      <button class="secondary-button" type="button" data-action="reset">
-        重新开始 / RESET
-      </button>
+      ${renderHomeAction()}
     </div>
   `;
   showContent();
@@ -1521,7 +1683,7 @@ function renderComposedPlanView(payload) {
   const refinementBlock = payload.refinement_result
     ? `
       <section class="followup-block">
-        <div class="assumptions-label">COMPOSED FROM / 合成来源</div>
+        <div class="assumptions-label">合成来源 / COMPOSED FROM</div>
         <p class="analysis-copy">${escapeHtml(payload.refinement_result.refinement_answer || "")}</p>
       </section>
     `
@@ -1533,6 +1695,7 @@ function renderComposedPlanView(payload) {
       "The updated full plan has been composed from the approved refinement and is ready for another follow-up round.",
       "success",
     )}
+    ${renderCompletionNotice(payload)}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -1542,29 +1705,38 @@ function renderComposedPlanView(payload) {
     </section>
     ${renderOpenQuestionSuggestions(payload.open_questions || [])}
     ${draftRecovery}
-    ${renderFollowUpEntry()}
-    <div class="result-actions">
-      <button class="secondary-button" type="button" data-action="reset">
-        重新开始 / RESET
-      </button>
-    </div>
+    ${renderFollowUpActions()}
   `;
   showContent();
 }
 
-function renderStatusBar(label, note = "", tone = "neutral") {
-  const normalizedTone = typeof tone === "string" && tone ? tone : "neutral";
-  const noteBlock = note
-    ? `<p class="result-status-note">${escapeHtml(note)}</p>`
-    : "";
+function renderHomeAction() {
+  const label = isViewingHistoryDetail ? "返回主页" : "重新开始";
   return `
-    <div class="result-status-bar result-status-bar-${escapeHtml(normalizedTone)}">
-      <div class="result-status-label">STATUS</div>
-      <div class="result-status-copy">
-        <div class="result-status-value">${escapeHtml(label)}</div>
-        ${noteBlock}
+    <button class="secondary-button action-button" type="button" data-action="reset">
+      <span class="action-button-icon" aria-hidden="true">⌂</span>
+      <span>${label}</span>
+    </button>
+  `;
+}
+
+function renderStatusBar() {
+  return "";
+}
+
+function renderCompletionNotice(payload) {
+  if (!payload || payload.archive_status !== "succeeded") {
+    return "";
+  }
+
+  return `
+    <section class="completion-notice" role="status">
+      <span class="completion-notice-icon" aria-hidden="true">✦</span>
+      <div>
+        <strong>新方案已生成并成功归档</strong>
+        <span>New version created and archived to Feishu</span>
       </div>
-    </div>
+    </section>
   `;
 }
 
@@ -1578,27 +1750,16 @@ function renderArchivePanel(payload) {
   const sessionKind = typeof payload.session_kind === "string" && payload.session_kind
     ? payload.session_kind
     : "analysis";
-  const parentSessionId = typeof payload.parent_session_id === "string" && payload.parent_session_id
-    ? payload.parent_session_id
-    : null;
   const archiveTitle = typeof payload.archive_title === "string" && payload.archive_title
     ? payload.archive_title
     : "N/A";
   const archiveStatus = typeof payload.archive_status === "string" && payload.archive_status
     ? payload.archive_status
     : "not_triggered";
-  const statusMeta = resolveArchivePanelStatusMeta(payload, archiveStatus, sessionKind);
+  const archiveSummary = resolveArchiveSummary(payload, archiveStatus, sessionKind);
   const archiveLink = typeof payload.archive_url === "string" && payload.archive_url
     ? payload.archive_url
     : null;
-  const parentRow = parentSessionId
-    ? `
-      <article class="archive-meta-item">
-        <div class="archive-meta-label">PARENT SESSION</div>
-        <div class="archive-meta-value archive-meta-mono">${escapeHtml(parentSessionId)}</div>
-      </article>
-    `
-    : "";
   const rootRow = rootSessionId
     ? `
       <article class="archive-meta-item">
@@ -1607,26 +1768,44 @@ function renderArchivePanel(payload) {
       </article>
     `
     : "";
-  const archiveAction = archiveLink
+  const archiveLinkAction = archiveLink
     ? `
-      <div class="archive-actions">
-        <a
-          class="archive-link"
-          href="${escapeHtml(archiveLink)}"
-          target="_blank"
-          rel="noreferrer"
-        >
-          OPEN FEISHU DOC
-        </a>
-      </div>
+      <a
+        class="archive-link"
+        href="${escapeHtml(archiveLink)}"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span class="action-button-icon" aria-hidden="true">↗</span>
+        <span>打开飞书文档</span>
+      </a>
     `
+    : "";
+  const archiveRetryAction = archiveStatus === "failed" && sessionId !== "N/A"
+    ? `
+      <button
+        class="archive-retry-button"
+        type="button"
+        data-action="open-archive-retry"
+        data-session-id="${escapeHtml(sessionId)}"
+      >
+        <span class="action-button-icon" aria-hidden="true">!</span>
+        <span>查看错误并重试</span>
+      </button>
+    `
+    : "";
+  const archiveActions = archiveLinkAction || archiveRetryAction
+    ? `<div class="archive-actions">${archiveLinkAction}${archiveRetryAction}</div>`
     : "";
 
   return `
     <section class="archive-panel archive-panel-${escapeHtml(archiveStatus)}">
       <div class="archive-panel-head">
-        <div class="assumptions-label">SESSION ARCHIVE / 归档状态</div>
-        <div class="archive-badge">${escapeHtml(statusMeta.badge)}</div>
+        <div class="assumptions-label">归档状态</div>
+        <div class="archive-status-list">
+          <div class="archive-badge">${archiveSummary.local}</div>
+          ${archiveSummary.archive ? `<div class="archive-badge">${archiveSummary.archive}</div>` : ""}
+        </div>
       </div>
       <div class="archive-meta-grid">
         <article class="archive-meta-item">
@@ -1634,27 +1813,108 @@ function renderArchivePanel(payload) {
           <div class="archive-meta-value archive-meta-mono">${escapeHtml(sessionId)}</div>
         </article>
         <article class="archive-meta-item">
-          <div class="archive-meta-label">SESSION KIND</div>
-          <div class="archive-meta-value">${escapeHtml(sessionKind)}</div>
-        </article>
-        <article class="archive-meta-item">
-          <div class="archive-meta-label">ARCHIVE STATUS</div>
-          <div class="archive-meta-value">${escapeHtml(statusMeta.label)}</div>
-        </article>
-        <article class="archive-meta-item">
           <div class="archive-meta-label">ARCHIVE TITLE</div>
           <div class="archive-meta-value">${escapeHtml(archiveTitle)}</div>
         </article>
         ${rootRow}
-        ${parentRow}
       </div>
-      <p class="archive-note">${escapeHtml(statusMeta.note)}</p>
-      ${archiveAction}
+      ${archiveActions}
     </section>
   `;
 }
 
-function resolveArchivePanelStatusMeta(payload, archiveStatus, sessionKind) {
+async function openArchiveRetryDialog(sessionId) {
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!normalizedSessionId || !(archiveRetryDialog instanceof HTMLElement)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/v1/sessions/${encodeURIComponent(normalizedSessionId)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      renderApiError(data, "无法读取当前归档失败信息，请稍后重试。");
+      return;
+    }
+    if (data.archive_status !== "failed") {
+      renderError("当前版本的飞书归档不处于失败状态，无法再次尝试。");
+      return;
+    }
+
+    archiveRetrySessionId = normalizedSessionId;
+    if (archiveRetryDialogMessage instanceof HTMLElement) {
+      archiveRetryDialogMessage.textContent = typeof data.archive_error === "string"
+        ? data.archive_error
+        : "飞书归档未完成，请检查登录状态和文档创建权限后再次尝试。";
+    }
+    archiveRetryDialog.classList.remove("hidden");
+    archiveRetrySubmitButton?.focus();
+  } catch (_error) {
+    renderError("读取归档失败信息时发生网络异常，请稍后重试。");
+  }
+}
+
+function hideArchiveRetryDialog() {
+  archiveRetrySessionId = null;
+  if (archiveRetryDialog instanceof HTMLElement) {
+    archiveRetryDialog.classList.add("hidden");
+  }
+}
+
+async function retryFailedArchive() {
+  if (!archiveRetrySessionId || !(archiveRetrySubmitButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const sessionId = archiveRetrySessionId;
+  let retrySucceeded = false;
+  setLoadingState(true, "重新尝试飞书归档 / RETRY", archiveRetrySubmitButton);
+
+  try {
+    const response = await fetch(
+      `/api/v1/sessions/${encodeURIComponent(sessionId)}/retry-archive`,
+      {method: "POST"},
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (archiveRetryDialogMessage instanceof HTMLElement) {
+        const detail = data && typeof data === "object" ? data.detail : null;
+        archiveRetryDialogMessage.textContent = detail
+          && typeof detail === "object"
+          && typeof detail.message === "string"
+          ? detail.message
+          : "重新尝试飞书归档失败，请稍后重试。";
+      }
+      return;
+    }
+    if (data.archive_status !== "succeeded") {
+      if (archiveRetryDialogMessage instanceof HTMLElement) {
+        archiveRetryDialogMessage.textContent = typeof data.archive_error === "string"
+          ? data.archive_error
+          : "飞书归档仍未完成，请检查授权后再次尝试。";
+      }
+      return;
+    }
+    retrySucceeded = true;
+    hideArchiveRetryDialog();
+  } catch (_error) {
+    if (archiveRetryDialogMessage instanceof HTMLElement) {
+      archiveRetryDialogMessage.textContent = "网络异常，未能确认归档重试结果，请刷新历史后确认。";
+    }
+  } finally {
+    setLoadingState(false, "分析 / ANALYZE", archiveRetrySubmitButton);
+  }
+
+  if (retrySucceeded) {
+    await openHistorySession(sessionId);
+  }
+}
+
+function resolveArchiveSummary(payload, archiveStatus, sessionKind) {
+  if (payload && payload.needs_clarification) {
+    return {local: "等待补充信息", archive: ""};
+  }
+
   if (
     sessionKind === "follow_up_refinement"
     && archiveStatus === "not_triggered"
@@ -1662,20 +1922,25 @@ function resolveArchivePanelStatusMeta(payload, archiveStatus, sessionKind) {
     && payload.needs_clarification === false
     && payload.refinement_result
   ) {
-    return {
-      badge: "LOCAL DRAFT",
-      label: "CACHED FOR 7 DAYS",
-      note: "This refinement stays in local SQLite for 7 days. Confirm compose to generate and archive a new formal full plan.",
-    };
+    return {local: "本地草稿已保存", archive: ""};
   }
 
-  return getArchiveStatusMeta(archiveStatus);
+  if (archiveStatus === "succeeded") {
+    return {local: "本地已生成", archive: "飞书已归档"};
+  }
+  if (archiveStatus === "pending") {
+    return {local: "本地已生成", archive: "飞书归档中"};
+  }
+  if (archiveStatus === "failed") {
+    return {local: "本地已生成", archive: "飞书归档失败"};
+  }
+  return {local: "本地已生成", archive: ""};
 }
 
 function renderInputEcho(inputEcho) {
   return `
     <section class="input-echo">
-      <div class="assumptions-label">INPUT ECHO / 忠实复述</div>
+      <div class="assumptions-label">忠实复述 / INPUT ECHO</div>
       <p class="input-echo-text">${escapeHtml(inputEcho)}</p>
     </section>
   `;
@@ -1684,7 +1949,7 @@ function renderInputEcho(inputEcho) {
 function renderAssumptions(listHtml) {
   return `
     <section class="assumptions-block">
-      <div class="assumptions-label">SYSTEM ASSUMPTIONS / 系统假设</div>
+      <div class="assumptions-label">系统假设 / SYSTEM ASSUMPTIONS</div>
       <ul class="assumptions-list">${listHtml}</ul>
     </section>
   `;
@@ -1715,7 +1980,7 @@ function renderClarificationRecord(clarifications) {
 
   return `
     <section class="clarification-record">
-      <div class="assumptions-label">CLARIFICATION RECORD / 已补充信息</div>
+      <div class="assumptions-label">已补充信息 / CLARIFICATION RECORD</div>
       <div class="clarification-grid">
         ${clarifications
           .map((item, index) => `
@@ -1738,7 +2003,7 @@ function renderOpenQuestionSuggestions(openQuestions) {
 
   return `
     <section class="followup-block">
-      <div class="assumptions-label">CONTINUE SHARPENING / 可继续打磨的问题</div>
+      <div class="assumptions-label">可继续打磨的问题 / CONTINUE SHARPENING</div>
       <div class="followup-grid">
         ${openQuestions
           .map((question, index) => `
@@ -1753,19 +2018,15 @@ function renderOpenQuestionSuggestions(openQuestions) {
   `;
 }
 
-function renderFollowUpEntry() {
+function renderFollowUpActions() {
   return `
-    <section class="followup-block">
-      <div class="assumptions-label">FOLLOW-UP / 继续完善</div>
-      <p class="analysis-copy">
-        如果你认可当前方向，但想继续收窄、补强或调整某些板块，可以继续发起一轮 follow-up。
-      </p>
-      <div class="result-actions">
-        <button class="question-submit" type="button" data-action="start-follow-up">
-          继续完善方案
-        </button>
-      </div>
-    </section>
+    <div class="result-actions result-actions-bottom">
+      <button class="question-submit action-button" type="button" data-action="start-follow-up">
+        <span class="action-button-icon" aria-hidden="true">✦</span>
+        <span>继续完善方案</span>
+      </button>
+      ${renderHomeAction()}
+    </div>
   `;
 }
 
@@ -2115,11 +2376,44 @@ function renderApiError(data, fallbackMessage) {
   renderError(message);
 }
 
+function renderRetryableApiError(data, fallbackMessage, retryAction) {
+  const detail = data && typeof data === "object" ? data.detail : null;
+  const message = detail && typeof detail === "object" && "message" in detail
+    ? String(detail.message)
+    : fallbackMessage;
+  renderError(message);
+  showRequestRetryDialog(message, retryAction);
+}
+
+function showRequestRetryDialog(message, retryAction) {
+  if (!(requestRetryDialog instanceof HTMLElement)) {
+    return;
+  }
+
+  failedRequestRetry = retryAction;
+  if (requestRetryDialogMessage instanceof HTMLElement) {
+    requestRetryDialogMessage.textContent = message;
+  }
+  requestRetryDialog.classList.remove("hidden");
+  requestRetrySubmitButton?.focus();
+}
+
+function hideRequestRetryDialog() {
+  failedRequestRetry = null;
+  if (requestRetryDialog instanceof HTMLElement) {
+    requestRetryDialog.classList.add("hidden");
+  }
+}
+
 function setSidebarCollapsed(isCollapsed) {
   document.body.classList.toggle("page-sidebar-collapsed", isCollapsed);
 
   if (sidebarToggleButton instanceof HTMLButtonElement) {
     sidebarToggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+    sidebarToggleButton.setAttribute("aria-label", isCollapsed ? "展开侧栏" : "收起侧栏");
+    sidebarToggleButton.dataset.tooltip = isCollapsed
+      ? "展开侧栏 / Expand sidebar"
+      : "收起侧栏 / Collapse sidebar";
   }
 
   if (sidebar instanceof HTMLElement) {
@@ -2134,6 +2428,10 @@ function setSearchPanelVisible(isVisible) {
 
   if (historySearchToggleButton instanceof HTMLButtonElement) {
     historySearchToggleButton.setAttribute("aria-expanded", String(isVisible));
+    historySearchToggleButton.setAttribute("aria-label", isVisible ? "关闭历史搜索" : "搜索历史");
+    historySearchToggleButton.dataset.tooltip = isVisible
+      ? "关闭历史搜索 / Close search"
+      : "搜索历史 / Search history";
   }
 
   if (isVisible && sidebarSearchInput instanceof HTMLInputElement) {
@@ -2200,9 +2498,11 @@ function buildHistoryThreadsRequestPath(limit = 24, query = currentHistorySearch
 }
 
 function setWorkspaceMode(mode) {
-  const isActive = mode === "active";
+  const isHistoryDetail = mode === "history-detail";
+  const isActive = mode === "active" || isHistoryDetail;
   document.body.classList.toggle("page-workspace-empty", !isActive);
   document.body.classList.toggle("page-workspace-active", isActive);
+  document.body.classList.toggle("page-workspace-history-detail", isHistoryDetail);
 }
 
 function setThreadContextVisible(isVisible) {
@@ -2222,7 +2522,7 @@ function resetThreadContextPanel() {
 
 function clearActiveSessionMarkers() {
   const activeItems = document.querySelectorAll(
-    ".history-folder.is-active, .history-version-item.is-active, .history-item.is-active, .thread-item.is-active",
+    ".history-folder.is-active, .history-version-item.is-active, .history-item.is-active, .thread-item.is-active, .thread-node-button.is-active",
   );
   for (const item of activeItems) {
     item.classList.remove("is-active");
@@ -2238,7 +2538,7 @@ function renderError(message) {
   resultError.innerHTML = `
     <div class="section-head">
       <span class="section-index">XX</span>
-      <h2 class="section-title">ERROR / 请求失败</h2>
+      <h2 class="section-title">请求失败 / ERROR</h2>
     </div>
     <p class="result-error-copy">${escapeHtml(message)}</p>
     ${note}
@@ -2265,12 +2565,20 @@ function showContent() {
   resultContent.classList.remove("hidden");
 }
 
+function scrollWorkspaceToTop() {
+  const scrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+  window.scrollTo({top: 0, behavior: scrollBehavior});
+}
+
 function clearResult() {
   currentSessionId = null;
   currentView = null;
   currentSessionContext = null;
   selectedHistorySessionId = null;
   selectedThreadRootSessionId = null;
+  isViewingHistoryDetail = false;
   setWorkspaceMode("empty");
   setWorkspaceBusy(false);
   resultPlaceholder.classList.remove("hidden");
@@ -2320,22 +2628,25 @@ function setLoadingState(isLoading, label, triggerButton) {
 function formatWorkspaceBusyMessage(label) {
   const normalizedLabel = String(label || "").toUpperCase();
   if (normalizedLabel.includes("DELETE VERSION")) {
-    return "Deleting this formal version and cleaning any attached local follow-up draft cache.";
+    return {primary: "正在删除版本", secondary: "Removing this version"};
   }
   if (normalizedLabel.includes("DELETE THREAD")) {
-    return "Deleting this history thread and attempting to remove its linked Feishu archives.";
+    return {primary: "正在删除链路", secondary: "Removing this thread"};
   }
   if (normalizedLabel.includes("DELETE")) {
-    return "Deleting local history and attempting to remove any linked Feishu archives.";
+    return {primary: "正在删除本地记录", secondary: "Removing local history"};
   }
   if (normalizedLabel.includes("COMPOSE")) {
-    return "Composing a new full plan from the approved refinement. Please keep this workspace open.";
+    return {primary: "正在生成新方案", secondary: "Creating the new version"};
   }
   if (normalizedLabel.includes("REFINE")) {
-    return "Generating a follow-up refinement for this session. Please keep this workspace open.";
+    return {primary: "正在完善方案", secondary: "Refining this version"};
   }
   if (normalizedLabel.includes("RE-RUN")) {
-    return "Re-running the current request with the latest clarifications. Please keep this workspace open.";
+    return {primary: "正在重新分析", secondary: "Re-running the analysis"};
+  }
+  if (normalizedLabel.includes("RETRY")) {
+    return {primary: "正在重试飞书归档", secondary: "Retrying Feishu archive"};
   }
   return DEFAULT_WORKSPACE_BUSY_MESSAGE;
 }
@@ -2351,8 +2662,58 @@ function setWorkspaceBusy(isBusy, message = DEFAULT_WORKSPACE_BUSY_MESSAGE) {
   }
 
   if (workspaceBusyText instanceof HTMLElement) {
-    workspaceBusyText.textContent = isBusy ? message : DEFAULT_WORKSPACE_BUSY_MESSAGE;
+    workspaceBusyText.textContent = isBusy ? message.primary : DEFAULT_WORKSPACE_BUSY_MESSAGE.primary;
   }
+
+  setLoadingDialog(isBusy, message);
+}
+
+function setLoadingDialog(isLoading, message = DEFAULT_WORKSPACE_BUSY_MESSAGE) {
+  if (!(loadingDialog instanceof HTMLElement)) {
+    return;
+  }
+
+  loadingDialog.classList.toggle("hidden", !isLoading);
+
+  if (loadingDialogMessage instanceof HTMLElement) {
+    loadingDialogMessage.textContent = isLoading ? message.primary : DEFAULT_WORKSPACE_BUSY_MESSAGE.primary;
+  }
+
+  if (loadingDialogMessageSecondary instanceof HTMLElement) {
+    loadingDialogMessageSecondary.textContent = isLoading
+      ? message.secondary
+      : DEFAULT_WORKSPACE_BUSY_MESSAGE.secondary;
+  }
+
+  if (isLoading) {
+    loadingStartedAt = Date.now();
+    updateLoadingElapsedTime();
+    if (loadingElapsedTimerId !== null) {
+      window.clearInterval(loadingElapsedTimerId);
+    }
+    loadingElapsedTimerId = window.setInterval(updateLoadingElapsedTime, 1000);
+    return;
+  }
+
+  if (loadingElapsedTimerId !== null) {
+    window.clearInterval(loadingElapsedTimerId);
+    loadingElapsedTimerId = null;
+  }
+  loadingStartedAt = null;
+  if (loadingDialogElapsed instanceof HTMLElement) {
+    loadingDialogElapsed.textContent = "00:00";
+  }
+}
+
+function updateLoadingElapsedTime() {
+  if (!(loadingDialogElapsed instanceof HTMLElement) || loadingStartedAt === null) {
+    return;
+  }
+
+  const elapsedSeconds = Math.floor((Date.now() - loadingStartedAt) / 1000);
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  loadingDialogElapsed.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function setActionButtonsDisabled(isDisabled) {
