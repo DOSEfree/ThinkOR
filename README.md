@@ -1,6 +1,6 @@
-# IdeaOS-Agent：让想法拥有自己的生命周期
+# ThinkOR：让想法拥有自己的生命周期
 
-IdeaOS-Agent 是 IdeaOS 的第一个公开版本，也是我尝试回答一个问题的开始：
+ThinkOR 是我尝试回答一个问题的开始：
 
 人每天产生那么多奇思妙想，要怎么实现呢？
 
@@ -10,7 +10,7 @@ LLM 横空出世，我曾以为这就是这个问题最完美的答案。但我�
 
 当上下文越来越长，它会受到历史内容影响；当信息不足，它会倾向于补全细节；当一次聊天结束，这个想法也随之淹没在新的消息里。
 
-IdeaOS 试图换一种方式。
+ThinkOR 试图换一种方式。
 
 在这里，一个想法不是一段 Context，也不是一次 Conversation，而是一个可以持续演进的对象（Idea Object）。
 
@@ -21,21 +21,21 @@ IdeaOS 试图换一种方式。
 ## 界面预览
 
 <p align="center">
-  <img src="README_image/v0.5.0_1.png" alt="IdeaOS-Agent 界面预览 1" width="49%" />
-  <img src="README_image/v0.5.0_2.png" alt="IdeaOS-Agent 界面预览 2" width="49%" />
+  <img src="README_image/v0.6.0_1.png" alt="ThinkOR 空状态界面预览" width="49%" />
+  <img src="README_image/v0.6.0_2.png" alt="ThinkOR 历史详情与归档状态预览" width="49%" />
 </p>
 
 ## 它可以做什么
 
-IdeaOS-Agent 围绕一条完整但足够克制的工作流展开：
+ThinkOR 围绕一条完整但足够克制的工作流展开：
 
 <p align="center">
-  <img src="README_image/IdeaOS-Agent工作流.png" alt="IdeaOS-Agent 工作流" width="88%" />
+  <img src="README_image/IdeaOS-Agent工作流.png" alt="ThinkOR 工作流" width="88%" />
 </p>
 
 在这个过程中，它不会无限追问，也不会无限聊天，而是尽可能让每一次交互都推动想法向前演进。
 
-目前 `v0.5.0` 公开版本已经支持：
+`v0.6.0` 版本支持：
 
 - 有界澄清：仅在必要时提出有限的问题，帮助补全上下文。
 - 结构化分析：围绕可行性、市场、资源、风险、MVP、长期方向等维度输出完整分析。
@@ -49,8 +49,8 @@ IdeaOS-Agent 围绕一条完整但足够克制的工作流展开：
 先 clone 仓库并进入目录：
 
 ```powershell
-git clone https://github.com/DOSEfree/IdeaOS-agent.git IdeaOS-Agent
-cd IdeaOS-Agent
+git clone https://github.com/DOSEfree/ThinkOR.git ThinkOR
+cd ThinkOR
 python -m pip install --upgrade pip
 python -m pip install .
 copy .env.example .env
@@ -103,17 +103,17 @@ src/ideaos_agent/
 
 版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-## 为什么是 IdeaOS？
+## 为什么是 ThinkOR？
 
 我一直觉得，一个真正值得继续投入的想法，并不是在某一次聊天中突然诞生的。
 
 它更像一个不断演进的过程：提出、澄清、分析、验证、推翻、重建，再逐渐变成可以执行的方案。
 
-IdeaOS 想探索的，不是如何生成更多内容，而是如何帮助一个想法拥有自己的成长过程。
+ThinkOR 想探索的，不是如何生成更多内容，而是如何帮助一个想法拥有自己的成长过程。
 
-IdeaOS-Agent 是这个方向上的第一次实践 —— 也是我这个小白开发者，第一次在 GitHub 上鼓起勇气迈出的一步。
+它是这个方向上的第一次实践 —— 也是我这个小白开发者，第一次在 GitHub 上鼓起勇气迈出的一步。
 
-写到这里，倒不想说太多客套话。我更想说，如果你也有一个正在生长中的想法，欢迎拿它来试试 IdeaOS。
+写到这里，倒不想说太多客套话。我更想说，如果你也有一个正在生长中的想法，欢迎拿它来试试 ThinkOR。
 
 项目还有很多不成熟的地方，但我会让它慢慢变好，希望它有一天，能配得上你的关注与支持。
 

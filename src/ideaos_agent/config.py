@@ -16,11 +16,20 @@ def _parse_bool(value: str | None, *, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _resolve_app_name(value: str | None) -> str:
+    """Keep the legacy display-name setting compatible with the ThinkOR brand."""
+
+    normalized = value.strip() if value is not None else ""
+    if not normalized or normalized == "IdeaOS-Agent":
+        return "ThinkOR"
+    return normalized
+
+
 @dataclass(frozen=True)
 class AppSettings:
     """Typed runtime settings loaded from environment variables."""
 
-    app_name: str = "IdeaOS-Agent"
+    app_name: str = "ThinkOR"
     environment: str = "development"
     debug: bool = False
     llm_provider: str = "alibaba_compatible"
@@ -43,7 +52,7 @@ def get_settings() -> AppSettings:
     """Load runtime settings from the current process environment."""
 
     return AppSettings(
-        app_name=os.getenv("IDEAOS_APP_NAME", "IdeaOS-Agent"),
+        app_name=_resolve_app_name(os.getenv("IDEAOS_APP_NAME")),
         environment=os.getenv("IDEAOS_ENV", "development"),
         debug=_parse_bool(os.getenv("IDEAOS_DEBUG"), default=False),
         llm_provider=os.getenv("IDEAOS_LLM_PROVIDER", "alibaba_compatible"),

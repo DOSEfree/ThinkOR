@@ -1,4 +1,4 @@
-"""Minimal FastAPI application for the current IdeaOS-Agent slices."""
+"""Minimal FastAPI application for the current ThinkOR slices."""
 
 from pathlib import Path
 

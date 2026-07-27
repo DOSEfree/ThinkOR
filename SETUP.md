@@ -109,6 +109,7 @@ IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS=30
 
 - 真实飞书归档失败时，主分析结果仍然会返回
 - 这类失败通常会体现为 `archive_status` 失败或没有可用的 `archive_url`
+- 对于已完成且归档失败的版本，界面会提供“查看错误并重试”；该操作只重试飞书归档，不会重新调用 LLM、不会生成新版本
 
 ## 可选的本地调优项
 
@@ -142,6 +143,7 @@ IDEAOS_MAX_INPUT_CHARS=4000
 
 - `IDEAOS_USE_FAKE_ARCHIVE` 是否已经切到 `false`
 - `lark-cli` 是否能在当前终端直接运行
+- 当前 `lark-cli` 登录用户是否已完成文档创建授权，并且有目标位置的创建权限；若提示 `need_user_authorization`，请先在 CLI 完成授权后再使用页面重试
 - 你的本地登录态是否有效
 - `IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN` 是否填错
 
@@ -151,4 +153,3 @@ IDEAOS_MAX_INPUT_CHARS=4000
 
 - `IDEAOS_USE_FAKE_LLM=false`
 - 但 `IDEAOS_LLM_BASE_URL`、`IDEAOS_LLM_API_KEY`、`IDEAOS_LLM_MODEL` 还不完整
-

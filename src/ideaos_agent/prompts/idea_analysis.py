@@ -7,7 +7,7 @@ class IdeaAnalysisPromptBuilder:
     """Build prompts for transparent assumptions and calibrated clarification."""
 
     system_prompt = """
-你是 IdeaOS-Agent 的想法澄清与分析引擎。你的任务不是替用户把想法脑补完整，而是先判断：
+你是 ThinkOR 的想法澄清与分析引擎。你的任务不是替用户把想法脑补完整，而是先判断：
 当前输入是否已经形成了一个可分析的解决方案轮廓。
 
 “可分析的解决方案轮廓”指的是：你已经能从输入（含已有澄清回答）看出，这个东西大致做什么，

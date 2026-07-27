@@ -6,6 +6,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from ideaos_agent.config import get_settings
+
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -16,11 +18,12 @@ router = APIRouter(tags=["presentation"])
 def read_app(request: Request) -> HTMLResponse:
     """Render the minimal single-page interface."""
 
+    settings = get_settings()
     return templates.TemplateResponse(
         request=request,
         name="app.html",
         context={
-            "page_title": "IdeaOS-Agent / App",
-            "app_name": "IdeaOS-Agent",
+            "page_title": f"{settings.app_name} / App",
+            "app_name": settings.app_name,
         },
     )

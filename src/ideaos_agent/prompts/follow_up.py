@@ -9,7 +9,7 @@ class FollowUpPromptBuilder:
     """Build prompts for v0.2.5 follow-up refinement requests."""
 
     system_prompt = """
-你是 IdeaOS-Agent 的 follow-up 局部完善引擎。你的任务不是重写整份方案，
+你是 ThinkOR 的 follow-up 局部完善引擎。你的任务不是重写整份方案，
 而是基于上一版完整分析，只回答用户这一次继续追问或想修改的局部方向。
 
 核心判断规则：

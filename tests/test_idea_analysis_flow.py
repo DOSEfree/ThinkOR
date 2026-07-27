@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -514,3 +515,58 @@ def test_sync_remote_archives_endpoint_returns_zero_removals_with_fake_archiver(
     assert sync_body["removed_session_count"] == 0
     assert sync_body["removed_session_ids"] == []
     assert sync_body["probe_failures"] == []
+
+
+def test_retry_failed_archive_endpoint_reuses_persisted_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
+    database_path = tmp_path / "ideaos_agent.db"
+    monkeypatch.setenv("IDEAOS_ARCHIVE_DB_PATH", str(database_path))
+    client = TestClient(app)
+
+    analysis_response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "我想做一个帮助独立开发者验证产品想法的工具。",
+            "clarifications": [
+                {
+                    "question": "你最想先验证什么？",
+                    "answer": "先判断一个想法值不值得继续做。",
+                }
+            ],
+        },
+    )
+    assert analysis_response.status_code == 200
+    session_id = analysis_response.json()["session_id"]
+    archive_store = SqliteSessionArchiveStore(database_path)
+    record = archive_store.get_session_record(session_id)
+    assert record is not None
+    failed_at = datetime.now(UTC)
+    archive_store.save_session_record(
+        record.model_copy(
+            update={
+                "archive_status": ArchiveStatus.FAILED,
+                "archive_url": None,
+                "archive_error": "need_user_authorization",
+                "archived_at": failed_at,
+                "updated_at": failed_at,
+            }
+        )
+    )
+
+    retry_response = client.post(f"/api/v1/sessions/{session_id}/retry-archive")
+
+    assert retry_response.status_code == 200
+    retry_body = retry_response.json()
+    assert retry_body["session_id"] == session_id
+    assert retry_body["archive_status"] == ArchiveStatus.SUCCEEDED
+    assert retry_body["archive_url"] == f"https://feishu.example.com/docx/{session_id}"
+    assert retry_body["archive_error"] is None
+
+    duplicate_retry_response = client.post(f"/api/v1/sessions/{session_id}/retry-archive")
+
+    assert duplicate_retry_response.status_code == 409
+    assert duplicate_retry_response.json()["detail"]["code"] == "archive_retry_not_allowed"

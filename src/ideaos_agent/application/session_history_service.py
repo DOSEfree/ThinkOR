@@ -3,7 +3,9 @@
 from datetime import UTC, datetime, timedelta
 
 from ideaos_agent.domain.archive import (
+    ArchiveResult,
     ArchiveStatus,
+    SessionArchivePayload,
     SessionArchiver,
     SessionArchiveStore,
     SessionRecord,
@@ -13,6 +15,7 @@ from ideaos_agent.domain.session import SessionKind, SessionSnapshot, SessionSna
 from ideaos_agent.models import (
     ArchiveDeleteFailure,
     ArchiveProbeFailure,
+    ArchiveRetryResponse,
     ArchiveSyncResponse,
     ClarificationAnswer,
     SessionDetailResponse,
@@ -118,6 +121,7 @@ class SessionHistoryService:
             session_kind=snapshot.session_kind,
             archive_status=record.archive_status,
             archive_url=record.archive_url,
+            archive_error=self._safe_archive_error(record.archive_error),
             archive_title=snapshot.archive_title,
             original_content=snapshot.original_content,
             input_echo=snapshot.input_echo,
@@ -147,6 +151,67 @@ class SessionHistoryService:
             active_follow_up_draft_updated_at=(
                 active_follow_up_draft.updated_at if active_follow_up_draft is not None else None
             ),
+        )
+
+    def retry_failed_archive(self, session_id: str) -> ArchiveRetryResponse:
+        """Retry one failed Feishu archive without regenerating the local session."""
+
+        snapshot = self._require_snapshot(session_id)
+        record = self._require_record(session_id)
+        if record.archive_status != ArchiveStatus.FAILED:
+            raise SessionStateError("Only failed Feishu archives can be retried.")
+
+        root_record = self._require_record(snapshot.root_session_id)
+        parent_record = (
+            self._require_record(snapshot.parent_session_id)
+            if snapshot.parent_session_id is not None
+            else None
+        )
+        archive_payload = SessionArchivePayload(
+            session_id=snapshot.session_id,
+            root_session_id=snapshot.root_session_id,
+            root_archive_url=root_record.archive_url,
+            parent_session_id=snapshot.parent_session_id,
+            parent_archive_url=(parent_record.archive_url if parent_record is not None else None),
+            session_kind=snapshot.session_kind,
+            archive_title=snapshot.archive_title,
+            original_content=snapshot.original_content,
+            input_echo=snapshot.input_echo,
+            clarifications=snapshot.clarifications,
+            assumptions=snapshot.assumptions,
+            open_questions=snapshot.open_questions,
+            follow_up_question=snapshot.follow_up_question,
+            analysis=snapshot.analysis,
+            refinement_result=snapshot.refinement_result,
+            created_at=snapshot.created_at,
+            completed_at=snapshot.completed_at,
+        )
+        archive_result = self._try_archive_session(archive_payload)
+        updated_record = self._session_archive_store.save_session_record(
+            record.model_copy(
+                update={
+                    "archive_status": archive_result.archive_status,
+                    "archive_url": archive_result.archive_url,
+                    "archive_error": archive_result.archive_error,
+                    "archived_at": archive_result.archived_at,
+                    "updated_at": archive_result.archived_at,
+                }
+            )
+        )
+        self._session_snapshot_store.save_session_snapshot(
+            snapshot.model_copy(
+                update={
+                    "archived_at": archive_result.archived_at,
+                    "updated_at": archive_result.archived_at,
+                }
+            )
+        )
+        return ArchiveRetryResponse(
+            session_id=updated_record.session_id,
+            archive_status=updated_record.archive_status,
+            archive_url=updated_record.archive_url,
+            archive_error=self._safe_archive_error(updated_record.archive_error),
+            archived_at=archive_result.archived_at,
         )
 
     def list_threads(
@@ -787,6 +852,36 @@ class SessionHistoryService:
         if record is None:
             raise SessionNotFoundError(f"Session record not found: {session_id}")
         return record
+
+    def _try_archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
+        """Run one archive attempt without letting adapter exceptions escape history flow."""
+
+        try:
+            return self._session_archiver.archive_session(payload)
+        except Exception as exc:
+            archived_at = datetime.now(UTC)
+            return ArchiveResult(
+                archive_status=ArchiveStatus.FAILED,
+                archive_url=None,
+                archive_error=f"Feishu archive exception: {exc}",
+                archived_at=archived_at,
+            )
+
+    @staticmethod
+    def _safe_archive_error(archive_error: str | None) -> str | None:
+        """Convert external CLI details into concise, actionable UI feedback."""
+
+        if archive_error is None:
+            return None
+
+        normalized_error = archive_error.lower()
+        if "need_user_authorization" in normalized_error:
+            return "飞书当前用户尚未完成文档创建授权，请完成 lark-cli 授权后再次尝试。"
+        if "timed out" in normalized_error or "timeout" in normalized_error:
+            return "飞书归档请求超时，请确认网络和飞书服务后再次尝试。"
+        if "command is unavailable" in normalized_error:
+            return "本机未能调用 lark-cli，请检查 CLI 安装和命令配置后再次尝试。"
+        return "飞书归档未完成，请检查 lark-cli 登录状态和文档创建权限后再次尝试。"
 
     def _has_formal_child_session(
         self,
