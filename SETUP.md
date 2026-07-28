@@ -1,35 +1,49 @@
 # SETUP
 
-这个文件只在以下情况下需要阅读：
+本文件说明如何从默认的本地 Fake 体验切换到真实 LLM 或真实飞书归档。第一次运行项目时不需要任何 Secret：没有 `.env` 时，ThinkOR 默认启用 Fake LLM 和 Fake Archive。
 
-- 你想从默认的 fake 模式切到真实 LLM
-- 你想启用真实飞书归档
-- 你想知道哪些环境变量只是可选调优项
+## 首次运行
 
-如果你只是想先把项目跑起来，请优先看 [README.md](README.md)。
+安装依赖并启动服务：
 
-## 先选一种运行模式
+```powershell
+python -m pip install --upgrade pip
+python -m pip install .
+python -m uvicorn ideaos_agent.main:app --reload
+```
 
-| 目标 | `IDEAOS_USE_FAKE_LLM` | `IDEAOS_USE_FAKE_ARCHIVE` | 额外要求 |
-| --- | --- | --- | --- |
-| 最快公开 demo | `true` | `true` | 无 |
-| 真实 LLM，fake 归档 | `false` | `true` | 需要自己的兼容接口、模型名和 API key |
-| 真实 LLM，真实飞书归档 | `false` | `false` | 需要自己的兼容接口、模型名、API key，以及可用的 `lark-cli` |
+打开 `http://127.0.0.1:8000/app`。默认模式不会调用真实 LLM，也不会创建飞书文档；本地历史会保存到 `data/ideaos_agent.db`。
 
-建议按这个顺序推进：
+只有准备使用真实能力时，才创建本地配置文件：
 
-1. 先跑通 `fake LLM + fake archive`
-2. 再切到 `real LLM + fake archive`
-3. 最后切到 `real LLM + real archive`
+```powershell
+copy .env.example .env
+```
 
-这样最容易定位问题到底出在模型链路还是飞书归档链路。
+macOS 或 Linux 使用 `cp .env.example .env`。`.env` 属于本机私有配置，不应提交到 Git。
 
-## 接入你自己的 LLM API
+## 运行设置面板
 
-当前代码发送的是 OpenAI-compatible 的 `chat completions` 风格请求。  
-`IDEAOS_LLM_PROVIDER` 目前主要作为请求头里的标记值传出，不会改变请求体结构。
+打开右上角“菜单 / Menu”进入“运行设置”。该面板仅可在以下条件下修改本机模式：
 
-把 `.env` 中的核心变量改成类似下面这样：
+- `IDEAOS_ENV=development`；
+- 浏览器与服务运行在本机 loopback 地址；
+- 请求来自同源页面，且带有页面生成的 CSRF Token。
+
+面板可以独立选择 LLM 与飞书归档的 Fake / Real 状态。保存时，它只会创建 `.env` 或更新以下两个键：
+
+```env
+IDEAOS_USE_FAKE_LLM=true
+IDEAOS_USE_FAKE_ARCHIVE=true
+```
+
+它不会接受、读取、显示、返回或写入 API Key、模型名、飞书 Token、App Secret、代理凭据或完整 `.env` 内容。若系统环境变量中显式设置了这两个模式键，它们会优先于 `.env`；面板会显示覆盖提示。
+
+`Fake LLM + Real Archive` 会将模拟生成内容写入真实飞书。选择此组合时，必须勾选页面上的明确确认项才能保存。
+
+## 真实 LLM
+
+先保持飞书归档为 Fake，再配置并验证真实 LLM。ThinkOR 使用 OpenAI-compatible Chat Completions 请求，真实模式至少需要以下三项：
 
 ```env
 IDEAOS_USE_FAKE_LLM=false
@@ -41,115 +55,68 @@ IDEAOS_LLM_API_KEY=your_api_key_here
 IDEAOS_LLM_MODEL=your_model_name_here
 ```
 
-最小要求：
+可选调优项：
 
-- `IDEAOS_LLM_BASE_URL`：真实可访问的兼容接口地址
-- `IDEAOS_LLM_API_KEY`：你的本地私有 key
-- `IDEAOS_LLM_MODEL`：要调用的模型名
+```env
+IDEAOS_LLM_TIMEOUT_SECONDS=30
+IDEAOS_MAX_INPUT_CHARS=4000
+```
 
-可选项：
+运行设置只会提示 `api_key`、`model` 等缺失项，绝不显示它们的值。系统不会为了检查配置自动发送真实 LLM 请求或消耗额度；配置后请自行完成一次分析验证结果。
 
-- `IDEAOS_LLM_TIMEOUT_SECONDS`：请求超时时间，默认 `30`
-- `IDEAOS_MAX_INPUT_CHARS`：输入上限，默认 `4000`
+## 真实飞书归档
 
-验证方式：
+真实归档由本机 `lark-cli` 执行。ThinkOR 不保存飞书登录态或 Token，只调用已配置的 CLI。推荐先确认 `Real LLM + Fake Archive` 已可用，再启用真实归档。
 
-1. 保持 `IDEAOS_USE_FAKE_ARCHIVE=true`
-2. 启动服务并打开 `/app`
-3. 完成一次分析
-4. 确认你拿到的是模型真实输出，而不是 fake demo 的固定样例
+### 1. 安装并配置 CLI
 
-如果你看到类似“LLM base URL、model 或 API key 未完整配置”，说明 fake 模式已经关闭，但这三个变量还没配完整。
+在终端确认 CLI 可用；若未安装，可执行：
 
-## 接入真实飞书归档
+```powershell
+npm install -g @larksuite/cli
+lark-cli --version
+```
 
-当前仓库通过本地 `lark-cli` 命令完成飞书文档创建、探测和删除。  
-这意味着仓库本身不会保存你的登录态或飞书凭据，它只会调用你本机已经可用的 CLI。
+首次使用 CLI 还需要完成飞书应用配置。请使用 `lark-cli config init` 的交互流程，或绑定你已有的 CLI profile；当前 ThinkOR 页面不会创建或修改飞书应用配置。
 
-### 启用前提
+### 2. 选择身份
 
-- 你的终端里可以直接运行 `lark-cli`
-- `lark-cli` 已完成你自己的本地登录
-- 你已经先跑通了 `real LLM + fake archive`
-
-### 需要的环境变量
-
-把 `.env` 中相关项改成类似下面这样：
+在 `.env` 中设置真实归档：
 
 ```env
 IDEAOS_USE_FAKE_ARCHIVE=false
-
 IDEAOS_FEISHU_CLI_COMMAND=lark-cli
 IDEAOS_FEISHU_ARCHIVE_AS=user
 IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN=
 IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS=30
 ```
 
-各项含义：
+`IDEAOS_FEISHU_ARCHIVE_AS` 的两种身份不能混用：
 
-- `IDEAOS_FEISHU_CLI_COMMAND`
-  - 默认就是 `lark-cli`
-  - 只有当你的可执行名或绝对路径不同，才需要改
-- `IDEAOS_FEISHU_ARCHIVE_AS`
-  - 当前默认值是 `user`
-- `IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN`
-  - 可留空
-  - 只有当你想把所有归档都放到固定父节点下时再填写
-- `IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS`
-  - 归档、探测、删除时共享的 CLI 超时时间
+- `user`：需要飞书应用已具备相应权限，用户再通过 CLI 授权。页面可检测状态，并在“未授权”时发起短时二维码授权；二维码和 device code 不会持久化。
+- `bot`：使用飞书应用身份。页面不会发起 user 授权；应在飞书开发者后台配置 App ID、App Secret 与所需 scopes。
 
-### 验证方式
+运行设置会检查目标身份，而不是仅检查 CLI 是否安装。`已授权，待首次归档验证` 说明目标 CLI 身份有效，但不代表创建文档、父目录权限或网络一定成功。
 
-1. 启动服务并完成一次正式分析
-2. 确认返回结果里 `archive_status` 成功
-3. 确认返回了可打开的 `archive_url`
-4. 在历史线程或会话详情里再次检查归档状态回显
+### 3. 验证归档
 
-说明：
+首次真实归档建议使用独立的测试父目录及其 `IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN`。完成一次真实 LLM 分析后，检查页面归档状态和可打开的 `archive_url`。归档失败不会丢失主分析结果；对失败会话可使用“查看错误并重试”，该操作只重试归档，不会再次调用 LLM 或创建新版本。
 
-- 真实飞书归档失败时，主分析结果仍然会返回
-- 这类失败通常会体现为 `archive_status` 失败或没有可用的 `archive_url`
-- 对于已完成且归档失败的版本，界面会提供“查看错误并重试”；该操作只重试飞书归档，不会重新调用 LLM、不会生成新版本
+## 常见状态与处理
 
-## 可选的本地调优项
-
-这些变量不是首次运行的必需项：
-
-```env
-IDEAOS_ARCHIVE_DB_PATH=data/ideaos_agent.db
-IDEAOS_FOLLOW_UP_DRAFT_RETENTION_DAYS=7
-IDEAOS_LLM_TIMEOUT_SECONDS=30
-IDEAOS_MAX_INPUT_CHARS=4000
-```
-
-它们分别用于：
-
-- 调整本地 `SQLite` 文件路径
-- 调整 follow-up draft 在本地保留的天数
-- 调整 LLM 请求超时
-- 调整输入长度限制
+| 页面状态 | 含义 | 下一步 |
+| --- | --- | --- |
+| 模拟 LLM / 模拟归档 | 默认安全体验 | 可直接完成分析 |
+| 真实 LLM 缺少 `api_key` 或 `model` | `.env` 尚未完整配置 | 手动填写对应本机字段 |
+| 未安装 CLI | 找不到 `lark-cli` | 安装 CLI 后点击“重新检测飞书” |
+| CLI 不可用 | CLI 无响应或命令配置错误 | 检查 `IDEAOS_FEISHU_CLI_COMMAND` 与 CLI 本身 |
+| 未授权 | 目标身份尚未可用 | user 可从页面发起二维码授权；bot 到开发者后台处理权限 |
+| 身份不匹配 | 可用身份与 `IDEAOS_FEISHU_ARCHIVE_AS` 不一致 | 修改本机配置或完成目标身份配置 |
+| 已授权，待首次归档验证 | CLI 授权状态正常 | 使用测试目录完成一次真实归档 |
 
 ## 安全边界
 
-- 不要把真实 API key、真实飞书 token 或私有链接写进仓库
-- 只在本地 `.env` 保存你的真实配置
-- 对外演示时，优先使用 fake 模式或测试用凭据
-
-## 常见问题
-
-### 分析结果能出来，但归档失败
-
-这通常说明主分析链路正常，但飞书 CLI 没有准备好。优先检查：
-
-- `IDEAOS_USE_FAKE_ARCHIVE` 是否已经切到 `false`
-- `lark-cli` 是否能在当前终端直接运行
-- 当前 `lark-cli` 登录用户是否已完成文档创建授权，并且有目标位置的创建权限；若提示 `need_user_authorization`，请先在 CLI 完成授权后再使用页面重试
-- 你的本地登录态是否有效
-- `IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN` 是否填错
-
-### 一启动就提示 LLM 未配置
-
-这通常说明：
-
-- `IDEAOS_USE_FAKE_LLM=false`
-- 但 `IDEAOS_LLM_BASE_URL`、`IDEAOS_LLM_API_KEY`、`IDEAOS_LLM_MODEL` 还不完整
+- 不要把 `.env`、API Key、飞书 Token、App Secret、代理凭据或私有文档链接提交到仓库、日志、截图或测试快照。
+- 对外演示优先使用 Fake LLM 与 Fake Archive；测试真实飞书时使用专用测试目录。
+- 不要为了模拟未授权状态，在日常机器上执行 `lark-cli auth logout` 或重置现有 profile；这会影响当前机器已配置的飞书能力。
+- 完整模拟“未安装 CLI -> 配置应用 -> 授权 -> 归档”的首次飞书流程，请使用 Windows Sandbox、虚拟机或另一个 Windows 用户，并使用独立测试飞书应用与测试目录。

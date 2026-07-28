@@ -35,7 +35,7 @@ ThinkOR 围绕一条完整但足够克制的工作流展开：
 
 在这个过程中，它不会无限追问，也不会无限聊天，而是尽可能让每一次交互都推动想法向前演进。
 
-`v0.6.0` 版本支持：
+当前版本支持：
 
 - 有界澄清：仅在必要时提出有限的问题，帮助补全上下文。
 - 结构化分析：围绕可行性、市场、资源、风险、MVP、长期方向等维度输出完整分析。
@@ -53,21 +53,23 @@ git clone https://github.com/DOSEfree/ThinkOR.git ThinkOR
 cd ThinkOR
 python -m pip install --upgrade pip
 python -m pip install .
-copy .env.example .env
 python -m uvicorn ideaos_agent.main:app --reload
 ```
 
 说明：
 
 - 上面的命令按 Windows PowerShell 编写
-- 如果你使用 macOS 或 Linux，请把 `copy .env.example .env` 改成 `cp .env.example .env`
 - 如果你希望隔离环境，可以自行使用 `conda` 或 `venv`，但不是首次体验这个 demo 的必需前提
+- 第一次体验不需要创建 `.env`，也不需要准备 API Key 或飞书凭据
+- 需要手动配置真实能力时，再执行 `copy .env.example .env`；在 macOS 或 Linux 上使用 `cp .env.example .env`
 
 启动完成后访问：
 
 - `http://127.0.0.1:8000/app`
 
-默认配置已经启用了 Fake LLM 和 Fake Archive，因此第一次运行无需配置任何 API Key，即可完整体验整个流程。
+第一次打开页面时，ThinkOR 默认使用 Fake LLM 和 Fake Archive，因此无需配置任何 API Key，即可完整体验分析、澄清、版本演进和本地历史流程。
+
+右上角的“菜单 / Menu”可打开运行设置。LLM 与飞书归档可独立选择 Fake 或 Real；面板在本机开发环境的 loopback 地址上可用，只会从 `.env.example` 创建 `.env`，或更新其中的 `IDEAOS_USE_FAKE_LLM` 与 `IDEAOS_USE_FAKE_ARCHIVE`。API Key、模型名、飞书 Token、代理凭据等 Secret 必须由用户在本机 `.env` 手动填写，页面不会接收、展示或返回这些值。
 
 如果希望接入自己的模型或启用真实飞书归档，可以参考 [SETUP.md](SETUP.md)。
 
@@ -89,15 +91,16 @@ src/ideaos_agent/
 项目保持当前分层：`api / application / domain / infrastructure / presentation / prompts`。  
 这让接口、业务编排、领域模型、基础设施适配和前端展示相互解耦，便于后续继续增量演进。
 
-## 运行模式
+## 运行模式与本地配置
 
-| 模式   | LLM  | 归档   |
-| ---- | ---- | ---- |
-| 默认体验 | Fake | Fake |
-| 开发调试 | Real | Fake |
-| 完整模式 | Real | Real |
+| 场景 | LLM | 飞书归档 | 结果 |
+| --- | --- | --- | --- |
+| 默认体验 | Fake | Fake | 不调用真实 API，也不写入飞书 |
+| 验证模型 | Real | Fake | 调用本机 `.env` 中的真实 LLM，不写入飞书 |
+| 真实归档 | Real | Real | 调用真实 LLM，并尝试写入飞书 |
+| 模拟内容归档 | Fake | Real | 必须在页面显式确认后才可保存；会写入真实飞书 |
 
-切换方式仅需修改 `.env` 中的环境变量即可，具体配置请参考 [SETUP.md](SETUP.md)。
+面板保存后的模式对后续请求立即生效。显式设置的系统环境变量优先于 `.env`；页面会提示此类覆盖，避免用户误以为保存未生效。真实 LLM 不会被系统自动调用测试，真实飞书的“已授权”也只代表 CLI 准备就绪，首次成功归档才是最终验证。完整配置、飞书身份边界与排障方式见 [SETUP.md](SETUP.md)。
 
 ## 版本说明
 

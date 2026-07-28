@@ -34,9 +34,10 @@
       </div>
       <button
         class="topbar-more"
+        id="runtime-settings-open"
         type="button"
-        aria-label="Open workspace menu placeholder"
-        data-tooltip="工作区菜单 / Workspace menu"
+        aria-label="菜单"
+        data-tooltip="菜单/Menu"
       >⋯</button>
     </div>
   </header>
@@ -305,6 +306,59 @@
     </div>
   </div>
 
+  <div
+    class="runtime-settings-dialog hidden"
+    id="runtime-settings-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="runtime-settings-title"
+  >
+    <div class="runtime-settings-card">
+      <div class="runtime-settings-head">
+        <div>
+          <p class="runtime-settings-kicker">本地运行环境</p>
+          <h2 id="runtime-settings-title">运行设置</h2>
+        </div>
+        <button class="secondary-button" id="runtime-settings-close" type="button">关闭</button>
+      </div>
+      <p class="runtime-settings-status" id="runtime-settings-status" aria-live="polite">正在读取本机状态...</p>
+      <form id="runtime-settings-form" class="runtime-settings-form">
+        <fieldset>
+          <legend>语言模型</legend>
+          <label><input type="radio" name="llm-mode" value="fake" checked> 模拟 LLM：完整体验，不调用 API</label>
+          <label><input type="radio" name="llm-mode" value="real"> 真实 LLM：在本机 .env 填写 API Key 和模型名</label>
+          <p class="runtime-settings-hint" id="runtime-llm-hint"></p>
+        </fieldset>
+        <fieldset>
+          <legend>飞书归档</legend>
+          <label><input type="radio" name="archive-mode" value="fake" checked> 模拟归档：不写入飞书</label>
+          <label><input type="radio" name="archive-mode" value="real"> 真实归档：使用本机 lark-cli</label>
+          <p class="runtime-settings-hint" id="runtime-archive-hint"></p>
+        </fieldset>
+        <label class="runtime-acknowledgement hidden" id="runtime-fake-archive-ack">
+          <input id="runtime-fake-archive-ack-input" type="checkbox">
+          我确认模拟 LLM 生成的内容会写入真实飞书。
+        </label>
+        <div class="runtime-settings-actions">
+          <button class="runtime-settings-apply" id="runtime-settings-apply" type="submit">保存并应用</button>
+          <button class="secondary-button" id="runtime-lark-recheck" type="button">重新检测飞书</button>
+        </div>
+      </form>
+      <section class="runtime-lark-guide hidden" id="runtime-lark-guide" aria-live="polite">
+        <h3>飞书 CLI 引导</h3>
+        <p id="runtime-lark-guide-copy"></p>
+        <code>npm install -g @larksuite/cli</code>
+        <button class="secondary-button" id="runtime-lark-authorize" type="button">开始用户授权</button>
+        <div class="runtime-lark-authorization hidden" id="runtime-lark-authorization">
+          <img id="runtime-lark-qrcode" alt="飞书授权二维码">
+          <a id="runtime-lark-verification-link" target="_blank" rel="noopener">打开授权页面</a>
+          <button class="primary-button" id="runtime-lark-complete" type="button">我已授权，检查状态</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <meta name="thinkor-csrf-token" content="{{ csrf_token }}">
   <div class="app-tooltip hidden" id="app-tooltip" role="tooltip" aria-hidden="true"></div>
 
   <script src="/static/app.js" defer></script>

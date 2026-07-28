@@ -2,10 +2,12 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 
 def _parse_bool(value: str | None, *, default: bool = False) -> bool:
@@ -23,6 +25,15 @@ def _resolve_app_name(value: str | None) -> str:
     if not normalized or normalized == "IdeaOS-Agent":
         return "ThinkOR"
     return normalized
+
+
+def _get_setting_value(name: str, dotenv_values_map: dict[str, str | None]) -> str | None:
+    """Prefer explicit process variables over the local dotenv file."""
+
+    process_value = os.getenv(name)
+    if process_value is not None:
+        return process_value
+    return dotenv_values_map.get(name)
 
 
 @dataclass(frozen=True)
@@ -49,28 +60,55 @@ class AppSettings:
 
 
 def get_settings() -> AppSettings:
-    """Load runtime settings from the current process environment."""
+    """Load settings from the local dotenv file and explicit process variables."""
+
+    dotenv_values_map = dict(dotenv_values(ENV_FILE_PATH)) if ENV_FILE_PATH.is_file() else {}
 
     return AppSettings(
-        app_name=_resolve_app_name(os.getenv("IDEAOS_APP_NAME")),
-        environment=os.getenv("IDEAOS_ENV", "development"),
-        debug=_parse_bool(os.getenv("IDEAOS_DEBUG"), default=False),
-        llm_provider=os.getenv("IDEAOS_LLM_PROVIDER", "alibaba_compatible"),
-        llm_base_url=os.getenv("IDEAOS_LLM_BASE_URL", ""),
-        llm_api_key=os.getenv("IDEAOS_LLM_API_KEY", ""),
-        llm_model=os.getenv("IDEAOS_LLM_MODEL", ""),
-        llm_timeout_seconds=float(os.getenv("IDEAOS_LLM_TIMEOUT_SECONDS", "30")),
-        max_input_chars=int(os.getenv("IDEAOS_MAX_INPUT_CHARS", "4000")),
-        use_fake_llm=_parse_bool(os.getenv("IDEAOS_USE_FAKE_LLM"), default=False),
-        use_fake_archive=_parse_bool(os.getenv("IDEAOS_USE_FAKE_ARCHIVE"), default=False),
-        archive_db_path=os.getenv("IDEAOS_ARCHIVE_DB_PATH", "data/ideaos_agent.db"),
-        follow_up_draft_retention_days=int(
-            os.getenv("IDEAOS_FOLLOW_UP_DRAFT_RETENTION_DAYS", "7")
+        app_name=_resolve_app_name(_get_setting_value("IDEAOS_APP_NAME", dotenv_values_map)),
+        environment=_get_setting_value("IDEAOS_ENV", dotenv_values_map) or "development",
+        debug=_parse_bool(_get_setting_value("IDEAOS_DEBUG", dotenv_values_map), default=False),
+        llm_provider=(
+            _get_setting_value("IDEAOS_LLM_PROVIDER", dotenv_values_map)
+            or "alibaba_compatible"
         ),
-        feishu_cli_command=os.getenv("IDEAOS_FEISHU_CLI_COMMAND", "lark-cli"),
-        feishu_archive_as=os.getenv("IDEAOS_FEISHU_ARCHIVE_AS", "user"),
-        feishu_archive_parent_token=os.getenv("IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN", ""),
+        llm_base_url=_get_setting_value("IDEAOS_LLM_BASE_URL", dotenv_values_map) or "",
+        llm_api_key=_get_setting_value("IDEAOS_LLM_API_KEY", dotenv_values_map) or "",
+        llm_model=_get_setting_value("IDEAOS_LLM_MODEL", dotenv_values_map) or "",
+        llm_timeout_seconds=float(
+            _get_setting_value("IDEAOS_LLM_TIMEOUT_SECONDS", dotenv_values_map) or "30"
+        ),
+        max_input_chars=int(
+            _get_setting_value("IDEAOS_MAX_INPUT_CHARS", dotenv_values_map) or "4000"
+        ),
+        use_fake_llm=_parse_bool(
+            _get_setting_value("IDEAOS_USE_FAKE_LLM", dotenv_values_map),
+            default=True,
+        ),
+        use_fake_archive=_parse_bool(
+            _get_setting_value("IDEAOS_USE_FAKE_ARCHIVE", dotenv_values_map),
+            default=True,
+        ),
+        archive_db_path=(
+            _get_setting_value("IDEAOS_ARCHIVE_DB_PATH", dotenv_values_map)
+            or "data/ideaos_agent.db"
+        ),
+        follow_up_draft_retention_days=int(
+            _get_setting_value("IDEAOS_FOLLOW_UP_DRAFT_RETENTION_DAYS", dotenv_values_map)
+            or "7"
+        ),
+        feishu_cli_command=(
+            _get_setting_value("IDEAOS_FEISHU_CLI_COMMAND", dotenv_values_map) or "lark-cli"
+        ),
+        feishu_archive_as=(
+            _get_setting_value("IDEAOS_FEISHU_ARCHIVE_AS", dotenv_values_map) or "user"
+        ),
+        feishu_archive_parent_token=(
+            _get_setting_value("IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN", dotenv_values_map)
+            or ""
+        ),
         feishu_archive_timeout_seconds=float(
-            os.getenv("IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS", "30")
+            _get_setting_value("IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS", dotenv_values_map)
+            or "30"
         ),
     )

@@ -594,6 +594,37 @@ class ArchiveRetryResponse(BaseModel):
         return normalized
 
 
+class RuntimeModeInput(BaseModel):
+    """Non-secret runtime choices sent by the local settings panel."""
+
+    use_fake_llm: bool
+    use_fake_archive: bool
+    acknowledge_fake_llm_real_archive: bool = False
+
+
+class LarkCapabilityResponse(BaseModel):
+    availability: str
+    identity: str
+    version: str | None = None
+    next_step: str
+    update_available: bool = False
+
+
+class RuntimeCapabilitiesResponse(BaseModel):
+    use_fake_llm: bool
+    use_fake_archive: bool
+    llm_state: str
+    llm_missing_items: list[str] = Field(default_factory=list)
+    archive_state: str
+    lark: LarkCapabilityResponse | None = None
+    process_environment_overrides: list[str] = Field(default_factory=list)
+
+
+class LocalConfigApplyResponse(RuntimeCapabilitiesResponse):
+    created_from_template: bool
+    updated_keys: list[str]
+
+
 class ThreadDeleteResponse(BaseModel):
     """Response returned after deleting one local thread and its linked archives."""
 

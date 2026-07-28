@@ -37,6 +37,24 @@ const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
 const appTooltip = document.getElementById("app-tooltip");
+const runtimeSettingsOpenButton = document.getElementById("runtime-settings-open");
+const runtimeSettingsDialog = document.getElementById("runtime-settings-dialog");
+const runtimeSettingsCloseButton = document.getElementById("runtime-settings-close");
+const runtimeSettingsForm = document.getElementById("runtime-settings-form");
+const runtimeSettingsStatus = document.getElementById("runtime-settings-status");
+const runtimeLlmHint = document.getElementById("runtime-llm-hint");
+const runtimeArchiveHint = document.getElementById("runtime-archive-hint");
+const runtimeFakeArchiveAck = document.getElementById("runtime-fake-archive-ack");
+const runtimeFakeArchiveAckInput = document.getElementById("runtime-fake-archive-ack-input");
+const runtimeLarkGuide = document.getElementById("runtime-lark-guide");
+const runtimeLarkGuideCopy = document.getElementById("runtime-lark-guide-copy");
+const runtimeLarkRecheckButton = document.getElementById("runtime-lark-recheck");
+const runtimeLarkAuthorizeButton = document.getElementById("runtime-lark-authorize");
+const runtimeLarkAuthorization = document.getElementById("runtime-lark-authorization");
+const runtimeLarkQrcode = document.getElementById("runtime-lark-qrcode");
+const runtimeLarkVerificationLink = document.getElementById("runtime-lark-verification-link");
+const runtimeLarkCompleteButton = document.getElementById("runtime-lark-complete");
+const csrfToken = document.querySelector('meta[name="thinkor-csrf-token"]')?.getAttribute("content") || "";
 
 let currentSessionId = null;
 let currentView = null;
@@ -55,6 +73,7 @@ let loadingElapsedTimerId = null;
 let archiveRetrySessionId = null;
 let failedRequestRetry = null;
 let pendingDeleteAction = null;
+let activeLarkSetupFlowId = null;
 
 const expandedHistoryRootIds = new Set();
 const historyThreadCache = new Map();
@@ -140,6 +159,42 @@ resetButton.addEventListener("click", () => {
 initializeUi();
 void initializeHistory();
 
+if (runtimeSettingsOpenButton instanceof HTMLButtonElement) {
+  runtimeSettingsOpenButton.addEventListener("click", () => {
+    void openRuntimeSettings();
+  });
+}
+
+if (runtimeSettingsCloseButton instanceof HTMLButtonElement) {
+  runtimeSettingsCloseButton.addEventListener("click", closeRuntimeSettings);
+}
+
+if (runtimeSettingsForm instanceof HTMLFormElement) {
+  runtimeSettingsForm.addEventListener("change", updateRuntimeAcknowledgement);
+  runtimeSettingsForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void applyRuntimeSettings();
+  });
+}
+
+if (runtimeLarkRecheckButton instanceof HTMLButtonElement) {
+  runtimeLarkRecheckButton.addEventListener("click", () => {
+    void loadRuntimeCapabilities();
+  });
+}
+
+if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
+  runtimeLarkAuthorizeButton.addEventListener("click", () => {
+    void startLarkAuthorization();
+  });
+}
+
+if (runtimeLarkCompleteButton instanceof HTMLButtonElement) {
+  runtimeLarkCompleteButton.addEventListener("click", () => {
+    void completeLarkAuthorization();
+  });
+}
+
 if (archiveRetryCloseButton instanceof HTMLButtonElement) {
   archiveRetryCloseButton.addEventListener("click", hideArchiveRetryDialog);
 }
@@ -176,6 +231,216 @@ if (deleteConfirmSubmitButton instanceof HTMLButtonElement) {
       void deleteAction();
     }
   });
+}
+
+async function openRuntimeSettings() {
+  if (!(runtimeSettingsDialog instanceof HTMLElement)) {
+    return;
+  }
+  runtimeSettingsDialog.classList.remove("hidden");
+  await loadRuntimeCapabilities();
+}
+
+function closeRuntimeSettings() {
+  if (runtimeSettingsDialog instanceof HTMLElement) {
+    runtimeSettingsDialog.classList.add("hidden");
+  }
+}
+
+async function loadRuntimeCapabilities() {
+  if (!(runtimeSettingsStatus instanceof HTMLElement)) {
+    return;
+  }
+  runtimeSettingsStatus.textContent = "正在检查本地运行状态...";
+  try {
+    const response = await fetch("/api/v1/runtime-capabilities");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error("暂时无法读取本地运行状态。");
+    }
+    renderRuntimeCapabilities(payload);
+  } catch (_error) {
+    runtimeSettingsStatus.textContent = "无法读取本地运行状态，请重新检测。";
+  }
+}
+
+function renderRuntimeCapabilities(payload) {
+  const fakeLlm = payload?.use_fake_llm !== false;
+  const fakeArchive = payload?.use_fake_archive !== false;
+  const llmInput = document.querySelector(`input[name="llm-mode"][value="${fakeLlm ? "fake" : "real"}"]`);
+  const archiveInput = document.querySelector(`input[name="archive-mode"][value="${fakeArchive ? "fake" : "real"}"]`);
+  if (llmInput instanceof HTMLInputElement) {
+    llmInput.checked = true;
+  }
+  if (archiveInput instanceof HTMLInputElement) {
+    archiveInput.checked = true;
+  }
+  const missingItems = Array.isArray(payload?.llm_missing_items) ? payload.llm_missing_items : [];
+  if (runtimeLlmHint instanceof HTMLElement) {
+    runtimeLlmHint.textContent = fakeLlm
+      ? "当前正在使用模拟 LLM。"
+      : missingItems.length
+        ? `真实 LLM 还需要在本机 .env 中填写：${missingItems.join(", ")}。此处不会显示密钥。`
+        : "真实 LLM 已配置，系统不会自动发起调用测试。";
+  }
+  if (runtimeArchiveHint instanceof HTMLElement) {
+    runtimeArchiveHint.textContent = fakeArchive
+      ? "当前正在使用模拟归档，不会写入飞书。"
+      : `真实飞书归档状态：${formatArchiveState(payload?.archive_state)}。`;
+  }
+  if (runtimeSettingsStatus instanceof HTMLElement) {
+    runtimeSettingsStatus.textContent = `当前模式：${fakeLlm ? "模拟" : "真实"} LLM / ${fakeArchive ? "模拟" : "真实"} 归档。`;
+  }
+  renderLarkGuide(payload?.lark);
+  updateRuntimeAcknowledgement();
+}
+
+function renderLarkGuide(lark) {
+  if (!(runtimeLarkGuide instanceof HTMLElement) || !(runtimeLarkGuideCopy instanceof HTMLElement)) {
+    return;
+  }
+  if (!lark) {
+    runtimeLarkGuide.classList.add("hidden");
+    return;
+  }
+  runtimeLarkGuide.classList.remove("hidden");
+  const messages = {
+    cli_missing: "本机未检测到 lark-cli。请先安装，再点击“重新检测飞书”。ThinkOR 不会代为执行全局安装。",
+    cli_unresponsive: "lark-cli 没有正常响应。请检查本机命令配置后重新检测。",
+    unauthenticated: "所选身份尚未授权。请完成本机 CLI 配置及用户授权。",
+    identity_mismatch: "当前 CLI 身份与 IDEAOS_FEISHU_ARCHIVE_AS 不一致。请更新本机配置后。",
+    authenticated_unverified: "已确认CLI 授权可用，请开始使用ThinkOR吧。",
+  };
+  runtimeLarkGuideCopy.textContent = messages[lark.availability] || "请重新检测飞书 CLI 状态。";
+  if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
+    runtimeLarkAuthorizeButton.classList.toggle("hidden", lark.availability !== "unauthenticated");
+  }
+}
+
+async function startLarkAuthorization() {
+  if (!(runtimeSettingsStatus instanceof HTMLElement)) {
+    return;
+  }
+  runtimeSettingsStatus.textContent = "正在生成新的飞书授权二维码...";
+  try {
+    const response = await fetch("/api/v1/lark/setup/start", {
+      method: "POST",
+      headers: {"X-ThinkOR-CSRF-Token": csrfToken},
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.detail?.message || "无法发起飞书授权。");
+    }
+    activeLarkSetupFlowId = payload.flow_id;
+    if (runtimeLarkQrcode instanceof HTMLImageElement) {
+      const qrResponse = await fetch(
+        `/api/v1/lark/setup/${encodeURIComponent(payload.flow_id)}/qrcode`,
+        {headers: {"X-ThinkOR-CSRF-Token": csrfToken}},
+      );
+      if (!qrResponse.ok) {
+        throw new Error("无法加载飞书授权二维码。");
+      }
+      runtimeLarkQrcode.src = URL.createObjectURL(await qrResponse.blob());
+    }
+    if (runtimeLarkVerificationLink instanceof HTMLAnchorElement) {
+      runtimeLarkVerificationLink.href = payload.verification_url;
+    }
+    if (runtimeLarkAuthorization instanceof HTMLElement) {
+      runtimeLarkAuthorization.classList.remove("hidden");
+    }
+    runtimeSettingsStatus.textContent = "请扫描二维码完成授权，再点击“我已授权，检查状态”。二维码将在短时间后失效。";
+  } catch (error) {
+    runtimeSettingsStatus.textContent = error instanceof Error ? error.message : "无法发起飞书授权。";
+  }
+}
+
+async function completeLarkAuthorization() {
+  if (!activeLarkSetupFlowId || !(runtimeSettingsStatus instanceof HTMLElement)) {
+    return;
+  }
+  runtimeSettingsStatus.textContent = "正在检查飞书授权状态...";
+  try {
+    const response = await fetch(`/api/v1/lark/setup/${encodeURIComponent(activeLarkSetupFlowId)}/complete`, {
+      method: "POST",
+      headers: {"X-ThinkOR-CSRF-Token": csrfToken},
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.detail?.message || "飞书授权未完成。");
+    }
+    activeLarkSetupFlowId = null;
+    if (runtimeLarkAuthorization instanceof HTMLElement) {
+      runtimeLarkAuthorization.classList.add("hidden");
+    }
+    await loadRuntimeCapabilities();
+  } catch (error) {
+    runtimeSettingsStatus.textContent = error instanceof Error ? error.message : "飞书授权未完成。";
+  }
+}
+
+function formatArchiveState(state) {
+  const archiveStates = {
+    available: "可用",
+    unavailable: "不可用",
+    unconfigured: "未配置",
+    cli_missing: "未安装 CLI",
+    cli_unresponsive: "CLI 不可用",
+    unauthenticated: "未授权",
+    identity_mismatch: "身份不匹配",
+    authenticated_unverified: "已授权，请直接开始使用",
+    unknown: "未知",
+  };
+  return archiveStates[String(state || "unknown")] || "未知";
+}
+
+function updateRuntimeAcknowledgement() {
+  const llmReal = document.querySelector('input[name="llm-mode"]:checked')?.value === "real";
+  const archiveReal = document.querySelector('input[name="archive-mode"]:checked')?.value === "real";
+  const requiresAcknowledgement = !llmReal && archiveReal;
+  if (runtimeFakeArchiveAck instanceof HTMLElement) {
+    runtimeFakeArchiveAck.classList.toggle("hidden", !requiresAcknowledgement);
+  }
+  if (!requiresAcknowledgement && runtimeFakeArchiveAckInput instanceof HTMLInputElement) {
+    runtimeFakeArchiveAckInput.checked = false;
+  }
+}
+
+async function applyRuntimeSettings() {
+  const useFakeLlm = document.querySelector('input[name="llm-mode"]:checked')?.value !== "real";
+  const useFakeArchive = document.querySelector('input[name="archive-mode"]:checked')?.value !== "real";
+  const acknowledged = runtimeFakeArchiveAckInput instanceof HTMLInputElement && runtimeFakeArchiveAckInput.checked;
+  if (useFakeLlm && !useFakeArchive && !acknowledged) {
+    if (runtimeSettingsStatus instanceof HTMLElement) {
+      runtimeSettingsStatus.textContent = "请先确认模拟 LLM 内容将写入真实飞书，再保存此组合。";
+    }
+    return;
+  }
+  try {
+    const response = await fetch("/api/v1/local-config/apply", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-ThinkOR-CSRF-Token": csrfToken},
+      body: JSON.stringify({
+        use_fake_llm: useFakeLlm,
+        use_fake_archive: useFakeArchive,
+        acknowledge_fake_llm_real_archive: acknowledged,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.detail?.message || "无法保存本地运行设置。");
+    }
+    renderRuntimeCapabilities(payload);
+    if (runtimeSettingsStatus instanceof HTMLElement) {
+      const overrideNote = Array.isArray(payload.process_environment_overrides) && payload.process_environment_overrides.length
+        ? ` 已保存至 .env，但当前进程环境变量仍会覆盖：${payload.process_environment_overrides.join(", ")}。`
+        : " 已保存并应用于后续请求。";
+      runtimeSettingsStatus.textContent += overrideNote;
+    }
+  } catch (error) {
+    if (runtimeSettingsStatus instanceof HTMLElement) {
+      runtimeSettingsStatus.textContent = error instanceof Error ? error.message : "无法保存本地运行设置。";
+    }
+  }
 }
 
 function initializeUi() {
@@ -286,6 +551,7 @@ function showAppTooltip(target) {
 
   appTooltip.textContent = copy;
   appTooltip.classList.remove("hidden", "is-above");
+  appTooltip.classList.toggle("is-menu-tooltip", target.id === "runtime-settings-open");
   appTooltip.setAttribute("aria-hidden", "false");
 
   const targetBounds = target.getBoundingClientRect();
@@ -306,6 +572,7 @@ function showAppTooltip(target) {
 function hideAppTooltip() {
   if (appTooltip instanceof HTMLElement) {
     appTooltip.classList.add("hidden");
+    appTooltip.classList.remove("is-menu-tooltip");
     appTooltip.setAttribute("aria-hidden", "true");
   }
 }

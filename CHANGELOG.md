@@ -3,9 +3,21 @@
 本项目采用人工维护的变更日志。
 
 记录原则：
+
 - 只记录已经进入主开发线的重要变化
 - 以版本为单位归档
 - `未发布` 仅记录已确认会进入下一版的事实性改动
+
+## [0.7.0] - 2026-07-28
+
+### 新增
+
+- 新增仅限本机开发环境的运行设置面板，可独立选择 Fake / Real LLM 与 Fake / Real 飞书归档；不存在 `.env` 时按双 Fake 模板创建，并且只更新非 Secret 的模式开关。
+- 新增真实 LLM 配置缺失项与飞书 CLI 可用性、目标身份的脱敏状态；配置为 `user` 身份时，可在页面发起短时二维码授权并重新检测。API Key、Token、device code 和原始 CLI 输出不会被 ThinkOR 返回或持久化。
+
+### 安全
+
+- 限制本地配置写入与飞书授权路由仅可由开发环境 loopback 地址上的同源页面携带 CSRF Token 调用；系统环境变量继续优先于 `.env`，页面会提示有效配置被覆盖。
 
 ## [0.6.0] - 2026-07-27
 
@@ -29,178 +41,116 @@
 
 ### 新增
 
-- 新增公开仓库根目录说明文件 `SETUP.md`，承接真实 LLM API、真实飞书归档、fake / real 模式切换与安全边界说明。
-- 新增 `LICENSE`，当前公开仓库采用 `Apache-2.0` 许可。
-- 新增 `SECURITY.md`，明确最新公开状态的漏洞提交流程与支持范围。
+- 新增 `SETUP.md`、`LICENSE` 与 `SECURITY.md`，补齐真实能力接入、Apache-2.0 许可和漏洞提交流程。
 - 新增 `README_image/` 演示截图资源，用于公开首页展示。
 
 ### 调整
 
-- 将 `README.md` 从内部开发记录视角收敛为面向 GitHub 访客的公开 demo 首页，补齐定位、演示路径、运行方式、项目结构与模式说明。
-- 将 `.env.example` 收敛为公开 demo 首跑模板：默认启用 `fake LLM + fake archive`，并将真实 LLM / 飞书相关变量转为按需启用说明。
-- 将公开运行说明从“本地开发环境约定”收敛为更适合公开访客的 `git clone -> install -> copy .env -> uvicorn` 启动路径。
-- 将包元数据版本从 `0.4.0` bump 到 `0.5.0`，与本轮正式收口版本对齐。
+- 将 README 与启动说明收敛为面向 GitHub 访客的公开 demo 路径，补齐定位、模式、项目结构和首跑流程。
+- 将 `.env.example` 设为默认双 Fake 的零 Secret 首跑模板，真实 LLM 与飞书配置改为按需启用。
+- 将包版本更新为 `0.5.0`。
 
 ### 移除
 
-- 公开仓库停止继续跟踪 `docs/`、`.cursor/`、`.github/ISSUE_TEMPLATE/docs.md` 与 `scripts/run_input_diagnosis.py`，这些内容继续保留在本地开发环境中使用。
+- 公开仓库停止跟踪内部协作与诊断资料；本地资料继续在开发环境使用。
 
 ## [0.4.5] - 2026-07-10
 
 ### 新增
 
-- 为 `v0.4.5` 新增仅限本地的正式历史搜索：侧栏搜索现通过 `/api/v1/threads?q=...` 过滤本地链路历史，可匹配标题、根想法内容与正式摘要等关键本地字段，并明确排除 follow-up draft 缓存与任何外部搜索来源。
-- 为 `v0.4.5` 新增非 ROOT 正式叶子删除能力：`DELETE /api/v1/sessions/{session_id}` 现可删除单个正式叶子版本，级联清理其附着的本地 follow-up draft 缓存，以 best-effort 方式删除关联飞书归档，并向界面返回父节点回退信息。
+- 新增仅限本地正式历史的搜索接口与侧栏搜索，不搜索 follow-up draft 或外部来源。
+- 新增非 ROOT 正式叶子版本删除，级联清理关联 draft、best-effort 删除飞书归档，并返回父节点回退信息。
 
 ### 调整
 
-- 将包元数据与已发布的 `v0.4.0` 状态对齐：`pyproject.toml` 与 `ideaos_agent.__version__` 均从 `0.2.0` 更新为 `0.4.0`。
-- 打磨 `v0.4.5` 的侧栏历史展示：时间分组标签按最新示意图调整字号，摘要卡片使用更紧凑的圆角与完整包围阴影，长标题在超过 10 个字符时自动省略，`历史记录 / HISTORY` 行与操作按钮保持垂直居中，工作区中的 `IdeaOS-Agent` 标题字重也同步减轻。
-- 继续推进 `v0.4.5` 前端细节打磨：在不影响工作区居中的前提下加宽侧栏，重排 thread 展开箭头与滚动条预留空间，使折叠图标在收起状态下翻转，保持分析序号与标题同一行展示，将带蓝色装饰竖条的卡片统一为方角，并弱化成功态状态卡片的绿色填充。
-- 继续推进 `v0.4.5` 侧栏微调：统一五个历史操作按钮的较小尺寸，放大并左移展开箭头以提升可读性，重新平衡分析序号与标题的视觉高度，并将滚动条导轨进一步右移，使卡片阴影显示更完整。
-- 继续微调 `v0.4.5` 侧栏细节：让顶部历史操作按钮与 `历史记录 / HISTORY` 标题块底线对齐，统一 `Latest / Updated` 元信息样式，并进一步收敛版本徽标与分析序号的对齐方式。
-- 在代码实现前锁定 `v0.4.5` 实施计划：本地历史搜索保持仅限本地与仅限正式历史，节点删除严格限制在非 ROOT 叶子，分支 follow-up 保持线性侧栏历史与全局递增版本号，并通过显式关系标记展示父子关系。
-- 实现 `v0.4.5` 的线性分支 follow-up 语义：正式历史节点现会在 SQLite 中持久化稳定的全局版本号，展开后的侧栏版本会显示 `from V01` 之类的轻量父节点标记，`CURRENT THREAD` 也会显式展示 `root / parent / current / chain` 上下文，而不把侧栏改成 tree-aware 布局。
-- 在 `v0.4.5` 的正式历史响应中直接暴露 leaf 删除状态：历史项现会声明当前版本是否可单独删除以及阻塞原因，便于侧栏隐藏 ROOT 单删入口、禁用非叶子删除，并在删除成功后安全回退到父版本。
+- 为正式历史持久化稳定的全局版本号和父版本标记，并在响应中公开叶子删除可用状态与阻塞原因。
+- 收敛侧栏按钮、摘要、版本元信息、展开状态和滚动布局，提高长标题及多版本场景的可读性。
 
 ### 修复
 
-- 移除 `pyproject.toml` 中遗留的 `httpx2` dev 依赖残项。
-- 新增元数据回归测试，尽早拦截包版本漂移与 `httpx2` 类似的依赖残留问题。
+- 对齐包版本元数据，移除遗留 `httpx2` 开发依赖，并增加元数据回归检查。
 
 ## [0.4.0] - 2026-07-09
 
 ### 新增
 
-- 为 `v0.4.0` 新增按 thread 分组历史的整线程删除能力：`DELETE /api/v1/threads/{root_session_id}` 现可删除本地 SQLite 历史，并以 best-effort 方式删除关联飞书归档。
-- 为 `v0.4.0` 新增真实可用的侧栏删除操作，用户可直接在 Web 界面删除一整条本地想法 thread，并同时尝试清理飞书归档。
-- 为 `v0.4.0` 新增单向远端删除同步：点击侧栏刷新按钮时会触发 `POST /api/v1/threads/sync-remote-archives`，使本地已归档 session 在对应飞书文档被手动删除后自动从历史中消失。
-- 为 session 详情响应新增可恢复的 follow-up draft 元数据：正式历史节点现可暴露 `active_follow_up_draft_id / question / updated_at`，以便界面在保留期内恢复未完成的 refinement draft。
-- 为 `v0.4.0` 前端改版接入新的页面壳层，`/app` 现已具备 `Topbar + Sidebar + Workspace` 三段式结构。
-- 新增前端静态资源目录 `src/ideaos_agent/presentation/static/assets/logo/`，将 `IdeaOS_logo / search / close / user` 四张图片纳入应用静态服务路径。
-- 新增空状态边界提示条，明确展示 `Single Analysis / One Clarification / Feishu Archive` 三条当前产品边界。
-- 新增 workspace 内的 `thread context` 面板壳层与对应前端挂点，使 `CURRENT THREAD / 当前链路` 可在结果区上方作为显式上下文展示。
-- 新增针对 `v0.4.0` 前端壳层、样式 token、thread context 挂点与 logo 资源的冒烟测试。
+- 新增整条 idea thread 删除，并以 best-effort 方式清理关联飞书归档。
+- 新增用户主动触发的远端归档同步；飞书文档不存在或进入回收站后清理对应本地历史。
+- 新增可恢复的 follow-up draft 元数据与入口。
+- 将 `/app` 升级为包含分组历史、thread context、业务状态和响应式布局的三段式工作台。
 
 ### 调整
 
-- 优化 `v0.4.0` 侧栏历史体验，使 `历史记录 / HISTORY` 保持单行展示，刷新图标辨识度更高，展开后的 thread 版本卡片也不再重复显示相同的根标题。
-- 调整 follow-up refinement 的持久化语义：完成态 `follow_up_refinement` session 现默认作为 7 天本地 draft 缓存保留，而不是立即进入正式历史版本。
-- 调整正式历史与 thread 视图：左侧侧栏现仅统计并展示正式版本（`analysis` 与 `full_plan_composed`），draft 恢复入口则放在父正式 session 的详情中。
-- 调整 compose 流程的父链接语义：消费一个缓存 refinement draft 后，会直接在前一个正式 session 下创建新的正式版本，并删除已使用的 draft snapshot。
-- 调整左侧刷新按钮语义：当前仅在用户主动点击刷新时，页面才会向飞书执行一次远端归档存在性探测并同步清理本地历史，不引入实时监听或飞书恢复反向回填。
-- 重构 `/static/swiss.css` 的设计令牌，统一采用 `#002FA7 / #7E8289 / #F9FAFB / #FFFFFF` 作为 `v0.4.0` 首版视觉基准，并将字体优先链切换为 `OPPOSans M / OPPOSans B`。
-- 调整 `/app` 页面结构，使既有分析、归档、history、follow-up 逻辑继续可挂载在新前端骨架上，而不改动后端 API 契约。
-- 重做工作区输入体验：首页现采用更聚焦的 hero 式输入台，而进入分析、错误或历史详情后会自动切换为更紧凑的 active workspace 模式。
-- 将 `recent sessions` 正式收敛到左侧侧栏，并把 `CURRENT THREAD / 当前链路` 从侧栏迁移到 workspace 内的上下文面板。
-- 同步调整左侧历史列表、线程节点卡片、前端事件委托与 smoke test，适配新的 `sidebar-only history + workspace thread context` 结构。
-- 重做结果区阅读与状态反馈：`result-shell` 现已接入 workspace 级 busy banner、`aria-busy` 状态与按钮级 loading 同步反馈，统一分析 / 澄清 / follow-up / archive 卡片的视觉层级。
-- 优化 `/app` 的空状态、错误态、归档反馈与移动端排版，补充结果占位提示卡、状态说明文案与响应式间距收口，同时保留失败时已生成结果继续可见的调试体验。
-- 调整 `/app` 桌面端双栏滚动边界：recent sessions 现在固定在左侧栏内独立滚动，workspace 不再被历史列表长度撑高；移动端单列布局仍保留自然页面滚动。
-- 进一步收敛 `/app` 首屏信息密度：移除顶栏重复用户名标签与左栏冗余说明，保留侧栏搜索占位和折叠入口，并收紧左侧历史卡片宽度与滚动边界，避免出现横向滚动条。
-- 将左侧历史记录升级为按 `idea thread` 展示的“文件夹 + 版本展开”视图，补回 `7天内 / 30天内 / YYYY-MM` 时间分组，并为后续后端删除能力预留前端占位入口。
+- 将 refinement 作为 7 天本地 draft 保存；正式历史只包含 analysis 与 composed plan，消费 draft 后创建新版本并删除快照。
+- 历史改为 idea thread/版本展开视图；侧栏独立滚动，移动端保持自然滚动，失败时保留已生成结果。
 
 ### 修复
 
-- 加强 `v0.4.0` 的飞书删除同步：刷新时的归档探测现改为使用轻量 `docs +fetch` 存在性检查，而不是仅凭 URL 判断，因此被移动到飞书回收站的文档会在下次手动刷新时被视为已删除并从本地历史移除。
-- 修复旧历史数据中 `root_session_id` 为空时的 thread 展开问题：thread / 详情 / 删除逻辑现会优先根据已加载快照推导根关系，而不是依赖旧 SQLite 行必须带有完整的根元数据。
-- 将侧栏刷新图标缩小约 10%，使其与其他工具按钮的视觉尺寸更一致。
-- 将侧栏刷新字形替换为新的 `refresh.png` 资源，并停止在历史卡片上渲染 `SUCCEEDED` 徽标，使完成态 thread 显示更干净。
-- 通过临时 SQLite 路径与 fake LLM / archive 默认值将 pytest 与开发者真实 `data/ideaos_agent.db` 隔离，避免集成测试污染本地历史数据。
+- 修复旧数据缺少 `root_session_id` 时的 thread 展开、详情和删除兼容问题。
+- 将测试 SQLite 与开发者真实数据隔离，避免测试污染本地历史。
 
 ## [0.3.0] - 2026-07-08
 
 ### 新增
 
-- 新增面向 `v0.3.0` 的 idea thread 聚合能力：会话记录、结构化快照、API 响应与本地 `SQLite` 均补充 `root_session_id`，用于将 `analysis / follow_up_refinement / full_plan_composed` 串联为同一条想法链路。
-- 新增本地历史查询能力：提供 `GET /api/v1/sessions`、`GET /api/v1/sessions/{session_id}`、`GET /api/v1/threads`、`GET /api/v1/threads/{root_session_id}`，支持查看最近 session、单个详情与 thread 链路。
-- 新增 `/app` 历史导航界面，包括 recent sessions、current thread、历史详情加载，以及从任意允许继续的历史节点直接发起 follow-up 的入口。
-- 新增 Feishu 归档 thread context，归档 payload 支持 `root_session_id / root_archive_url`，归档正文可展示根会话、父节点与当前节点在链路中的角色。
+- 增加 `root_session_id`，将 analysis、refinement 和 composed plan 聚合为 idea thread。
+- 新增 session/thread 历史查询和 `/app` 历史导航，支持从允许的历史节点继续完善。
+- 飞书归档增加根会话、父节点和当前节点的 thread context。
 
 ### 调整
 
-- 历史记录能力继续保持显式导航边界，而不是自动把历史内容 silent 注入下一轮 prompt。
-- follow-up 可从当前结果或任意允许继续的历史节点显式发起，但仍保持 bounded refinement 与用户确认后再合成完整方案的交互模型。
-- 前端历史按钮、局部完善结果区与归档展示文案进一步统一为中英双语，便于在历史 / 结果混合场景下阅读与操作。
+- 历史只通过用户显式导航参与后续操作，不自动注入 prompt；follow-up 保持有界完善和确认后合成。
 
 ### 修复
 
-- 修复本地 fake LLM 在 follow-up 场景中对 prompt 形态判断不稳定的问题，避免把 follow-up 请求误判回根分析链路。
-- 修复归档链路在 Windows 环境下的中文渲染与线程上下文传递细节，保证飞书文档正文可稳定展示中文与 thread metadata。
+- 修复 fake LLM 将 follow-up 误判为根分析的问题。
+- 修复 Windows 下飞书归档中文渲染和 thread metadata 传递问题。
 
 ## [0.2.5] - 2026-07-06
 
 ### 新增
 
-- 新增 `v0.2.5` follow-up 领域模型与 API 契约，包括 `SessionKind / SessionSnapshot / RefinementResult / FollowUpResponse / ComposedPlanResponse`，用于承接“基于已归档结果继续完善方案”的最小闭环。
-- 新增 follow-up 应用层服务与接口：`POST /api/v1/follow-up/refine` 用于生成局部完善结果，`POST /api/v1/follow-up/compose-full-plan` 用于在用户确认后合成新版本完整方案。
-- 新增本地 `SQLite` 结构化快照存储 `session_snapshots`，并为会话索引补充 `parent_session_id / session_kind` 字段，支持沿父 session 继续推理。
-- 新增 follow-up 归档模板与飞书文档渲染能力，支持归档 `analysis / follow_up_refinement / full_plan_composed` 三类 session，并在正文中保留逻辑父子关系信息。
-- 新增 follow-up 单测覆盖，验证局部完善结果生成、父子 session 关系保存、完整方案合成以及归档适配行为。
+- 新增有界 follow-up 闭环：先生成局部完善结果，再由用户确认合成完整新版本。
+- 新增结构化 snapshot、父子关系和三类 session 归档，为沿已有结果继续完善提供本地状态。
+- `/app` 新增继续完善、确认合成、分类型结果和对应加载状态。
 
 ### 调整
 
-- 根分析链路在完成态时现在会额外保存结构化 analysis snapshot，而不只是最小归档索引，为 `v0.2.5` follow-up 提供可靠的本地状态来源。
-- 本地 fake LLM 与响应解析逻辑已扩展到 follow-up 场景，可在不依赖真实模型的情况下稳定演示“继续完善 -> 澄清 -> 合成完整方案”的交互。
-- 前端 `/app` 已加入“继续完善方案”和“确认修改并生成新版本完整方案”入口，并支持从当前展示结果继续发起下一轮 follow-up。
-- 前端结果区现在会区分完整分析、局部完善结果与归档状态，并按当前操作显示对应的加载状态，避免多按钮场景下交互混乱。
+- 根分析保存结构化快照，fake LLM 与解析逻辑支持完整 follow-up 演示。
 
 ### 修复
 
-- 修复真实 LLM 在 follow-up 场景下偶发返回单对象或 `null` 数组字段时的解析脆弱性；本地解析器现在会对 `proposed_section_updates / affected_sections / next_actions` 等字段做最小兼容纠偏。
-- 修复前端在 follow-up 请求失败时将当前结果区整体隐藏的问题；现在错误信息会单独显示，已生成的分析或局部完善结果会继续保留在页面中便于人工调试。
-- 修复重复点击“继续完善方案”会不断插入新的输入面板的问题；当前实现会复用已打开的 follow-up 编辑区，并阻止重复提交。
-- 修复 follow-up 输出板块标题与标签显示不一致的问题，统一为可读的中英文标题格式，避免直接暴露底层字段名。
+- 兼容真实 LLM 返回单对象或 `null` 数组字段。
+- follow-up 失败时保留已有结果，复用输入面板并阻止重复提交，同时统一标题与标签。
 
 ## [0.2.0] - 2026-07-06
 
 ### 新增
 
-- 引入会话归档领域模型 `ArchiveStatus / SessionRecord` 与会话编排服务，补齐 `session_id / archive_status / archive_url` 契约。
-- 接入本地 `SQLite` 归档索引存储，默认落盘到 `data/ideaos_agent.db`，支持最小会话记录的创建、更新与查询。
-- 补充 `session_id` 续传、会话状态编排与 `SQLite` 存储层的测试覆盖。
-- 新增飞书归档契约 `SessionArchiver / SessionArchivePayload / ArchiveResult`，并接入基于 `lark-cli` 的 Feishu Docx 归档适配。
-- 新增飞书归档 XML 渲染器与本地 fake 归档器，支持在不写入真实飞书文档的情况下完成测试与本地联调。
-- 新增前端归档状态面板，支持在 `/app` 中展示 `session_id / archive_status / archive_title / archive_url`，并在归档成功时提供飞书文档打开入口。
+- 新增会话归档模型、应用编排和 SQLite 索引，记录 session、状态和归档地址。
+- 接入 `lark-cli` 飞书归档、XML 渲染和 fake archiver，并在 `/app` 展示归档状态与文档入口。
 
 ### 调整
 
-- 拆分 LLM 输出模型与 API 响应模型，避免会话归档元数据进入 prompt 或 fake client。
-- 调整前端单轮澄清流程：首次响应保留 `session_id`，二次“补充并重新分析”请求原样带回。
-- 新增 `IDEAOS_ARCHIVE_DB_PATH` 配置项，并补充本地归档数据库文件的忽略规则。
-- 完成态会话现在会在写入本地 `SQLite` 索引后同步尝试飞书归档，并将结果回写为 `succeeded / failed`，同时保证归档失败不阻塞主分析结果返回。
-- 补充 `archive_title` 语义标题字段与 `IDEAOS_USE_FAKE_ARCHIVE`、`IDEAOS_FEISHU_*` 配置项，用于控制飞书标题策略、CLI 调用方式、归档位置与超时行为。
+- 完成态先写 SQLite，再尝试飞书归档并回写结果；归档失败不阻塞主分析结果。
+- 增加归档数据库、Fake Archive、飞书身份/目录/超时和标题配置，并保持归档元数据不进入 prompt。
 
 ### 修复
 
-- 修复 Windows 环境下真实飞书归档调用 `lark-cli` 时的命令解析问题，归档器现在会先解析可执行文件真实路径，避免 `.cmd` 包装器无法被 `subprocess.run(["lark-cli", ...])` 正确找到。
-- 修复 Windows 环境下飞书归档中文乱码问题，归档器调用 `lark-cli` 时现已显式使用 `UTF-8` 传输 XML 内容，避免运行中 Python 进程回落系统默认编码后将中文写成乱码。
+- 修复 Windows 下 `lark-cli` 可执行文件解析和飞书归档中文编码问题。
 
 ## [0.1.0] - 2026-07-05
 
 ### 新增
 
-- 建立项目愿景、产品定义、路线图与 Python 主体工程基线。
-- 建立单次想法分析主链路，完成从输入校验、提示词构建、LLM 调用到结构化输出的端到端闭环。
-- 引入分层后端结构：`api / application / domain / infrastructure / prompts`。
-- 实现假设透明化与单轮澄清交互模型，支持“澄清态 / 正式分析态”两档输出。
-- 提供最小可运行 Web 界面 `/app`，承接想法输入、澄清补充与分析结果展示。
-- 支持真实 LLM 接口与本地 fake client 两种运行方式。
+- 建立从输入校验、提示词、LLM 到九模块结构化输出的单次想法分析闭环。
+- 建立 `api / application / domain / infrastructure / prompts` 分层后端，以及支持输入、最多一次澄清和结果展示的 `/app`。
+- 支持真实 LLM 与 fake client，默认仅在信息不足时澄清。
 
 ### 调整
 
-- 将开发基线统一为 `conda + Python 3.13 + pip`。
-- 将项目状态文档调整为以 `v0.x` 为主的版本化表达。
-- 将默认交互校准为“信息不足时才澄清”，并补齐 `input_echo` 契约。
-- 优化 `/app` 页面结构与九个分析模块的展示布局。
-- 明确项目默认开发环境为 `ideaos-agent`。
+- 统一 `conda + Python 3.13 + pip`、`ideaos-agent` 环境和 `input_echo` 契约。
 
 ### 修复
 
-- 修复 `TestClient/httpx` 兼容性 warning。
-- 统一文本文件换行策略为 `LF`，补齐 `.gitattributes` 与 `.editorconfig`。
-- 补充 `.gitignore` 对本地工程产物的忽略规则。
-
-### 移除
-
-- 删除未使用的本地 `issue/` 目录。
+- 修复 TestClient/httpx 兼容警告，统一 LF 和本地工程产物忽略规则。

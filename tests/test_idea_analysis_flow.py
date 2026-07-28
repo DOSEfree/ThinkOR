@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from ideaos_agent import config
 from ideaos_agent.domain.archive import ArchiveStatus
 from ideaos_agent.infrastructure.archive.sqlite_store import SqliteSessionArchiveStore
 from ideaos_agent.main import app
@@ -44,9 +45,11 @@ def test_idea_analysis_rejects_input_that_is_too_long(
 
 def test_idea_analysis_requires_key_when_not_using_fake_llm(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "false")
     monkeypatch.delenv("IDEAOS_LLM_API_KEY", raising=False)
+    monkeypatch.setattr(config, "ENV_FILE_PATH", tmp_path / ".env")
     client = TestClient(app)
 
     response = client.post("/api/v1/idea-analysis", json={"content": "我想做一个想法分析工具。"})
