@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from ideaos_agent import config
 from ideaos_agent.domain.archive import ArchiveStatus
 from ideaos_agent.infrastructure.archive.sqlite_store import SqliteSessionArchiveStore
 from ideaos_agent.main import app
@@ -44,9 +45,11 @@ def test_idea_analysis_rejects_input_that_is_too_long(
 
 def test_idea_analysis_requires_key_when_not_using_fake_llm(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "false")
     monkeypatch.delenv("IDEAOS_LLM_API_KEY", raising=False)
+    monkeypatch.setattr(config, "ENV_FILE_PATH", tmp_path / ".env")
     client = TestClient(app)
 
     response = client.post("/api/v1/idea-analysis", json={"content": "我想做一个想法分析工具。"})
@@ -82,8 +85,8 @@ def test_idea_analysis_accepts_clarifications_with_fake_llm(
     assert response.status_code == 200
     body = response.json()
     assert body["session_id"].startswith("sess_")
-    assert body["archive_status"] == ArchiveStatus.SUCCEEDED
-    assert body["archive_url"] == f"https://feishu.example.com/docx/{body['session_id']}"
+    assert body["archive_status"] == ArchiveStatus.SIMULATED
+    assert body["archive_url"] is None
     assert body["archive_title"] == "独立开发者产品验证工具"
     assert body["input_echo"] == "我想做一个帮助独立开发者验证产品想法的工具。"
     assert body["needs_clarification"] is False
@@ -143,9 +146,9 @@ def test_idea_analysis_persists_session_record_to_sqlite(
     persisted_record = archive_store.get_session_record(body["session_id"])
 
     assert persisted_record is not None
-    assert persisted_record.archive_status == ArchiveStatus.SUCCEEDED
+    assert persisted_record.archive_status == ArchiveStatus.SIMULATED
     assert persisted_record.root_session_id == body["session_id"]
-    assert persisted_record.archive_url == f"https://feishu.example.com/docx/{body['session_id']}"
+    assert persisted_record.archive_url is None
     assert persisted_record.clarification_count == 1
     assert persisted_record.completed_at is not None
     assert persisted_record.archived_at is not None
@@ -434,7 +437,7 @@ def test_delete_leaf_session_endpoint_blocks_root_single_delete(
     assert delete_response.json()["detail"]["code"] == "session_state_invalid"
 
 
-def test_delete_thread_endpoint_removes_local_history_and_archives(
+def test_delete_thread_endpoint_removes_local_history_without_remote_fake_archive(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -473,7 +476,7 @@ def test_delete_thread_endpoint_removes_local_history_and_archives(
     delete_body = delete_response.json()
     assert delete_body["root_session_id"] == analysis_body["session_id"]
     assert delete_body["deleted_session_count"] >= 2
-    assert delete_body["deleted_archive_count"] >= 1
+    assert delete_body["deleted_archive_count"] == 0
     assert delete_body["archive_delete_failures"] == []
 
     thread_response = client.get(f"/api/v1/threads/{analysis_body['session_id']}")
@@ -484,7 +487,7 @@ def test_delete_thread_endpoint_removes_local_history_and_archives(
     assert sessions_response.json()["items"] == []
 
 
-def test_sync_remote_archives_endpoint_returns_zero_removals_with_fake_archiver(
+def test_sync_remote_archives_endpoint_skips_simulated_archives(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -511,7 +514,7 @@ def test_sync_remote_archives_endpoint_returns_zero_removals_with_fake_archiver(
 
     assert sync_response.status_code == 200
     sync_body = sync_response.json()
-    assert sync_body["checked_archive_count"] >= 1
+    assert sync_body["checked_archive_count"] == 0
     assert sync_body["removed_session_count"] == 0
     assert sync_body["removed_session_ids"] == []
     assert sync_body["probe_failures"] == []
@@ -562,8 +565,8 @@ def test_retry_failed_archive_endpoint_reuses_persisted_session(
     assert retry_response.status_code == 200
     retry_body = retry_response.json()
     assert retry_body["session_id"] == session_id
-    assert retry_body["archive_status"] == ArchiveStatus.SUCCEEDED
-    assert retry_body["archive_url"] == f"https://feishu.example.com/docx/{session_id}"
+    assert retry_body["archive_status"] == ArchiveStatus.SIMULATED
+    assert retry_body["archive_url"] is None
     assert retry_body["archive_error"] is None
 
     duplicate_retry_response = client.post(f"/api/v1/sessions/{session_id}/retry-archive")

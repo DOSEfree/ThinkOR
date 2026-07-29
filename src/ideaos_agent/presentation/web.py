@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from ideaos_agent.api.local_management import get_csrf_token
 from ideaos_agent.config import get_settings
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -25,5 +26,6 @@ def read_app(request: Request) -> HTMLResponse:
         context={
             "page_title": f"{settings.app_name} / App",
             "app_name": settings.app_name,
+            "csrf_token": get_csrf_token(),
         },
     )

@@ -1,19 +1,28 @@
 """Dependency wiring for API routes."""
 
+import os
+
 from ideaos_agent.application.follow_up_session_service import FollowUpSessionService
 from ideaos_agent.application.idea_analysis_service import IdeaAnalysisService
 from ideaos_agent.application.idea_analysis_session_service import IdeaAnalysisSessionService
+from ideaos_agent.application.lark_setup_service import LarkSetupService
+from ideaos_agent.application.local_config_service import LocalConfigService
+from ideaos_agent.application.runtime_capability_service import RuntimeCapabilityService
 from ideaos_agent.application.session_history_service import SessionHistoryService
-from ideaos_agent.config import AppSettings, get_settings
+from ideaos_agent.config import ENV_FILE_PATH, PROJECT_ROOT, AppSettings, get_settings
 from ideaos_agent.domain.archive import SessionArchiver, SessionArchiveStore
 from ideaos_agent.domain.session import SessionSnapshotStore
 from ideaos_agent.infrastructure.archive.fake_archiver import FakeSessionArchiver
 from ideaos_agent.infrastructure.archive.lark_cli_archiver import LarkCliSessionArchiver
+from ideaos_agent.infrastructure.archive.lark_cli_status import LarkCliStatusAdapter
 from ideaos_agent.infrastructure.archive.sqlite_store import SqliteSessionArchiveStore
+from ideaos_agent.infrastructure.config.dotenv_store import DotenvModeStore
 from ideaos_agent.infrastructure.llm.client import HttpLlmClient, LlmClient
 from ideaos_agent.infrastructure.llm.fake_client import FakeLlmClient
 from ideaos_agent.prompts.follow_up import FollowUpPromptBuilder
 from ideaos_agent.prompts.idea_analysis import IdeaAnalysisPromptBuilder
+
+_LARK_SETUP_SERVICE: LarkSetupService | None = None
 
 
 def get_app_settings() -> AppSettings:
@@ -110,3 +119,49 @@ def get_session_history_service() -> SessionHistoryService:
         session_snapshot_store=get_session_snapshot_store(settings),
         session_archiver=get_session_archiver(settings),
     )
+
+
+def get_lark_cli_status_adapter(settings: AppSettings) -> LarkCliStatusAdapter:
+    """Build the standalone local CLI status adapter."""
+
+    return LarkCliStatusAdapter(
+        command=settings.feishu_cli_command,
+        archive_as=settings.feishu_archive_as,
+        timeout_seconds=settings.feishu_archive_timeout_seconds,
+    )
+
+
+def get_runtime_capability_service() -> RuntimeCapabilityService:
+    """Return safe effective mode and readiness details."""
+
+    settings = get_app_settings()
+    return RuntimeCapabilityService(
+        settings=settings,
+        lark_adapter=get_lark_cli_status_adapter(settings),
+    )
+
+
+def get_local_config_service() -> LocalConfigService:
+    """Return the service allowed to patch two non-secret mode flags."""
+
+    return LocalConfigService(
+        dotenv_store=DotenvModeStore(
+            dotenv_path=ENV_FILE_PATH,
+            template_path=PROJECT_ROOT / ".env.example",
+        ),
+        settings_loader=get_settings,
+        process_environment=dict(os.environ),
+    )
+
+
+def get_lark_setup_service() -> LarkSetupService:
+    """Return the one in-process, short-lived user authorization flow manager."""
+
+    global _LARK_SETUP_SERVICE
+    if _LARK_SETUP_SERVICE is None:
+        settings = get_app_settings()
+        _LARK_SETUP_SERVICE = LarkSetupService(
+            adapter=get_lark_cli_status_adapter(settings),
+            project_root=PROJECT_ROOT,
+        )
+    return _LARK_SETUP_SERVICE

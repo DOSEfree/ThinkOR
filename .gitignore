@@ -35,6 +35,7 @@ Thumbs.db
 
 # Environment
 .env
+.env.lock
 .env.*
 !.env.example
 
@@ -46,3 +47,4 @@ scripts/run_input_diagnosis.py
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/lark_setup/

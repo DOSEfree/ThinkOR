@@ -544,7 +544,11 @@ class SessionHistoryService:
 
         if record is None:
             return False
-        if record.archive_status not in {ArchiveStatus.SUCCEEDED, ArchiveStatus.FAILED}:
+        if record.archive_status not in {
+            ArchiveStatus.SIMULATED,
+            ArchiveStatus.SUCCEEDED,
+            ArchiveStatus.FAILED,
+        }:
             return False
         return self._is_formal_session(snapshot.session_kind)
 

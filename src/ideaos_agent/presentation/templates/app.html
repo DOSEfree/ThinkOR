@@ -21,23 +21,33 @@
         <h1 class="topbar-title">{{ app_name }}</h1>
       </div>
     </div>
-    <div class="topbar-user">
-      <div class="topbar-user-copy">
-        <span class="topbar-user-value">LOCAL WORKSPACE</span>
-      </div>
-      <div class="topbar-user-avatar-shell" aria-hidden="true">
-        <img
-          class="topbar-user-avatar"
-          src="/static/assets/logo/user.png"
-          alt=""
-        >
-      </div>
+    <div class="topbar-user" aria-label="本地工作区控制">
+      <span class="topbar-user-name" id="profile-name">LOCAL WORKSPACE</span>
       <button
-        class="topbar-more"
+        class="topbar-control-pill topbar-profile-pill"
+        id="profile-open"
         type="button"
-        aria-label="Open workspace menu placeholder"
-        data-tooltip="工作区菜单 / Workspace menu"
-      >⋯</button>
+        aria-label="编辑本地个人资料"
+        data-tooltip="编辑个人资料"
+      >
+        <span class="topbar-control-hover" aria-hidden="true"></span>
+        <span class="topbar-user-avatar-shell" aria-hidden="true">
+          <img class="topbar-user-avatar" id="profile-avatar" src="/static/assets/logo/user.png" alt="">
+        </span>
+      </button>
+      <button
+        class="topbar-control-pill topbar-menu-pill"
+        id="runtime-settings-open"
+        type="button"
+        aria-label="菜单"
+        data-tooltip="菜单/Menu"
+      >
+        <span class="topbar-control-hover" aria-hidden="true"></span>
+        <span class="topbar-control-label-stack">
+          <span class="topbar-control-label">菜单 / MENU</span>
+          <span class="topbar-control-label-hover" aria-hidden="true">运行设置</span>
+        </span>
+      </button>
     </div>
   </header>
 
@@ -305,6 +315,98 @@
     </div>
   </div>
 
+  <div
+    class="runtime-settings-dialog hidden"
+    id="runtime-settings-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="runtime-settings-title"
+  >
+    <div class="runtime-settings-card">
+      <div class="runtime-settings-head">
+        <div>
+          <p class="runtime-settings-kicker">本地运行环境</p>
+          <h2 id="runtime-settings-title">运行设置</h2>
+        </div>
+        <button class="secondary-button" id="runtime-settings-close" type="button">关闭</button>
+      </div>
+      <p class="runtime-settings-status" id="runtime-settings-status" aria-live="polite">正在读取本机状态...</p>
+      <form id="runtime-settings-form" class="runtime-settings-form">
+        <fieldset>
+          <legend>语言模型</legend>
+          <label><input type="radio" name="llm-mode" value="fake" checked> 模拟 LLM：完整体验，不调用 API</label>
+          <label><input type="radio" name="llm-mode" value="real"> 真实 LLM：在本机 .env 填写 API Key 和模型名</label>
+          <p class="runtime-settings-hint" id="runtime-llm-hint"></p>
+        </fieldset>
+        <fieldset>
+          <legend>飞书归档</legend>
+          <label><input type="radio" name="archive-mode" value="fake" checked> 模拟归档：不写入飞书</label>
+          <label><input type="radio" name="archive-mode" value="real"> 真实归档：使用本机 lark-cli</label>
+          <p class="runtime-settings-hint" id="runtime-archive-hint"></p>
+        </fieldset>
+        <label class="runtime-acknowledgement hidden" id="runtime-fake-archive-ack">
+          <input id="runtime-fake-archive-ack-input" type="checkbox">
+          我确认模拟 LLM 生成的内容会写入真实飞书。
+        </label>
+        <div class="runtime-settings-actions">
+          <button class="runtime-settings-apply" id="runtime-settings-apply" type="submit">保存并应用</button>
+          <button class="secondary-button" id="runtime-lark-recheck" type="button">重新检测飞书</button>
+        </div>
+      </form>
+      <section class="runtime-lark-guide hidden" id="runtime-lark-guide" aria-live="polite">
+        <h3>飞书 CLI 引导</h3>
+        <p id="runtime-lark-guide-copy"></p>
+        <code class="runtime-lark-install-command" id="runtime-lark-install-command">npm install -g @larksuite/cli</code>
+        <button class="secondary-button hidden" id="runtime-lark-configure" type="button">开始配置飞书 CLI</button>
+        <button class="secondary-button hidden" id="runtime-lark-authorize" type="button">开始用户授权</button>
+        <div class="runtime-lark-configuration hidden" id="runtime-lark-configuration">
+          <p id="runtime-lark-configuration-status">正在准备飞书 CLI 应用配置...</p>
+          <img id="runtime-lark-configuration-qrcode" alt="飞书 CLI 配置二维码">
+          <a id="runtime-lark-configuration-link" target="_blank" rel="noopener">打开飞书 CLI 配置页面</a>
+          <button class="secondary-button" id="runtime-lark-configuration-complete" type="button">我已完成配置，重新检测</button>
+        </div>
+        <div class="runtime-lark-authorization hidden" id="runtime-lark-authorization">
+          <img id="runtime-lark-qrcode" alt="飞书授权二维码">
+          <a id="runtime-lark-verification-link" target="_blank" rel="noopener">打开授权页面</a>
+          <button class="primary-button" id="runtime-lark-complete" type="button">我已授权，检查状态</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div
+    class="profile-dialog hidden"
+    id="profile-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="profile-dialog-title"
+  >
+    <form class="profile-dialog-card" id="profile-form">
+      <div class="profile-dialog-head">
+        <div>
+          <p class="runtime-settings-kicker">仅保存在当前浏览器</p>
+          <h2 id="profile-dialog-title">个人资料</h2>
+        </div>
+        <button class="secondary-button" id="profile-close" type="button">关闭</button>
+      </div>
+      <label class="profile-field" for="profile-name-input">
+        <span>显示名称</span>
+        <input id="profile-name-input" type="text" maxlength="32" autocomplete="nickname" placeholder="例如：我的工作区">
+      </label>
+      <div class="profile-avatar-editor">
+        <img id="profile-avatar-preview" src="/static/assets/logo/user.png" alt="当前头像预览">
+        <label class="secondary-button profile-upload-button" for="profile-avatar-input">上传头像</label>
+        <input id="profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden">
+        <button class="secondary-button profile-avatar-reset" id="profile-avatar-reset" type="button">恢复默认头像</button>
+      </div>
+      <p class="profile-dialog-status" id="profile-dialog-status" aria-live="polite"></p>
+      <div class="profile-dialog-actions">
+        <button class="runtime-settings-apply" type="submit">保存资料</button>
+      </div>
+    </form>
+  </div>
+
+  <meta name="thinkor-csrf-token" content="{{ csrf_token }}">
   <div class="app-tooltip hidden" id="app-tooltip" role="tooltip" aria-hidden="true"></div>
 
   <script src="/static/app.js" defer></script>

@@ -505,6 +505,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 connection.execute(
                     "ALTER TABLE session_records ADD COLUMN formal_version_number INTEGER"
                 )
+            self._migrate_legacy_fake_archive_urls(connection)
 
             connection.execute(
                 """
@@ -541,6 +542,24 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     "ALTER TABLE session_snapshots ADD COLUMN formal_version_number INTEGER"
                 )
             self._backfill_formal_version_numbers(connection)
+
+    @staticmethod
+    def _migrate_legacy_fake_archive_urls(connection: sqlite3.Connection) -> None:
+        """Clear v0.6 fake URLs so they cannot be mistaken for real Feishu documents."""
+
+        connection.execute(
+            """
+            UPDATE session_records
+            SET archive_status = ?, archive_url = NULL, archive_error = NULL
+            WHERE archive_status = ?
+              AND archive_url LIKE ?
+            """,
+            (
+                ArchiveStatus.SIMULATED.value,
+                ArchiveStatus.SUCCEEDED.value,
+                "https://feishu.example.com/docx/%",
+            ),
+        )
 
     def _connect(self) -> sqlite3.Connection:
         """Open a SQLite connection with row access by column name."""
