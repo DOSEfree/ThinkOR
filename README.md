@@ -73,6 +73,18 @@ python -m uvicorn ideaos_agent.main:app --reload
 
 如果希望接入自己的模型或启用真实飞书归档，可以参考 [SETUP.md](SETUP.md)。
 
+### 更新已 Clone 的项目
+
+停止服务后，在 ThinkOR 项目根目录更新代码并重新安装本地包，再启动服务：
+
+```powershell
+git pull --ff-only
+python -m pip install .
+python -m uvicorn ideaos_agent.main:app --reload
+```
+
+`.env` 和 `data/ideaos_agent.db` 是本机私有配置与历史，不会被 Git 更新覆盖。通过 ZIP 下载或复制得到的目录不包含 `.git`，不能使用 `git pull`；请先 clone 到新的目录，再仅迁移 `.env` 与 `data/`。
+
 ## 项目结构
 
 ```text

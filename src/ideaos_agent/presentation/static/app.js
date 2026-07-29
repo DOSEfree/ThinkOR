@@ -259,7 +259,7 @@ async function loadRuntimeCapabilities() {
   runtimeSettingsStatus.textContent = "正在检查本地运行状态...";
   try {
     const response = await fetch("/api/v1/runtime-capabilities");
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error("暂时无法读取本地运行状态。");
     }
@@ -430,7 +430,7 @@ async function applyRuntimeSettings() {
         acknowledge_fake_llm_real_archive: acknowledged,
       }),
     });
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload?.detail?.message || "无法保存本地运行设置。");
     }

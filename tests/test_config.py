@@ -1,6 +1,15 @@
 from pathlib import Path
 
 from ideaos_agent import config
+from ideaos_agent.config import resolve_project_root
+
+
+def test_resolve_project_root_prefers_project_working_directory(tmp_path: Path) -> None:
+    project_directory = tmp_path / "ThinkOR"
+    project_directory.mkdir()
+    (project_directory / "pyproject.toml").write_text("[project]\nname = 'thinkor'\n")
+
+    assert resolve_project_root(project_directory) == project_directory
 
 
 def test_settings_default_to_dual_fake_without_dotenv(

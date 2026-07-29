@@ -260,6 +260,8 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     )
     assert feishu_host_allowlist in response.text
     assert "模拟归档（未写入飞书）" in response.text
+    assert 'fetch("/api/v1/local-config/apply"' in response.text
+    assert "const payload = await response.json().catch(() => ({}));" in response.text
     assert "删除这条想法线程" in response.text
     assert "1 个版本 / VERSION" in response.text
     assert 'historySessionList.classList.remove("is-scrolling")' in response.text

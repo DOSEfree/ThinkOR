@@ -6,7 +6,17 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+def resolve_project_root(working_directory: Path | None = None) -> Path:
+    """Resolve the local project directory before falling back to the installed package path."""
+
+    candidate = (working_directory or Path.cwd()).resolve()
+    if (candidate / "pyproject.toml").is_file() or (candidate / ".env.example").is_file():
+        return candidate
+    return Path(__file__).resolve().parents[2]
+
+
+PROJECT_ROOT = resolve_project_root()
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 

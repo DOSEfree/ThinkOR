@@ -1,11 +1,14 @@
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
+from ideaos_agent.api.runtime_capabilities import apply_local_config
 from ideaos_agent.application.local_config_service import LocalConfigService
 from ideaos_agent.config import get_settings
 from ideaos_agent.domain.runtime import RuntimeModeSelection, RuntimeModeSelectionError
 from ideaos_agent.infrastructure.config.dotenv_store import DotenvModeStore, DotenvStoreError
+from ideaos_agent.models import RuntimeModeInput
 
 
 def test_update_creates_dotenv_from_template_and_only_changes_modes(tmp_path: Path) -> None:
@@ -119,3 +122,27 @@ def test_local_config_service_reports_process_override(monkeypatch, tmp_path: Pa
     assert result.effective_use_fake_llm is True
     assert result.effective_use_fake_archive is False
     assert result.process_environment_overrides == ("IDEAOS_USE_FAKE_LLM",)
+
+
+def test_apply_local_config_returns_json_conflict_when_dotenv_is_unavailable() -> None:
+    class UnavailableLocalConfigService:
+        def apply_runtime_modes(self, _selection: RuntimeModeSelection) -> None:
+            raise DotenvStoreError("template is missing")
+
+    with pytest.raises(HTTPException) as exc_info:
+        apply_local_config(
+            RuntimeModeInput(use_fake_llm=True, use_fake_archive=True),
+            None,
+            UnavailableLocalConfigService(),
+            None,
+        )
+
+    unavailable_message = (
+        "无法更新本地运行设置。请从 ThinkOR 项目根目录启动服务，"
+        "并确认 .env.example 存在且可读取。"
+    )
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == {
+        "code": "local_config_unavailable",
+        "message": unavailable_message,
+    }

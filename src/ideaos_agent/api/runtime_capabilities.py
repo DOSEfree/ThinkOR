@@ -17,6 +17,7 @@ from ideaos_agent.application.runtime_capability_service import (
     RuntimeCapabilityService,
 )
 from ideaos_agent.domain.runtime import RuntimeModeSelection, RuntimeModeSelectionError
+from ideaos_agent.infrastructure.config.dotenv_store import DotenvStoreError
 from ideaos_agent.models import (
     LarkCapabilityResponse,
     LocalConfigApplyResponse,
@@ -73,6 +74,17 @@ def apply_local_config(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "acknowledgement_required", "message": str(exc)},
+        ) from exc
+    except DotenvStoreError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "local_config_unavailable",
+                "message": (
+                    "无法更新本地运行设置。请从 ThinkOR 项目根目录启动服务，"
+                    "并确认 .env.example 存在且可读取。"
+                ),
+            },
         ) from exc
     capabilities = _capabilities_response(capability_service.get_capabilities())
     return LocalConfigApplyResponse(
