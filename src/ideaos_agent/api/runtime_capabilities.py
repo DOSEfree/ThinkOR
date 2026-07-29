@@ -64,12 +64,12 @@ def apply_local_config(
     payload: RuntimeModeInput,
     _: LocalAccessDependency,
     service: LocalConfigServiceDependency,
-    capability_service: CapabilityServiceDependency,
 ) -> LocalConfigApplyResponse:
     """Atomically update only local mode flags and return the effective next-request state."""
 
     try:
         result = service.apply_runtime_modes(_selection(payload))
+        capabilities = _capabilities_response(get_runtime_capability_service().get_capabilities())
     except RuntimeModeSelectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -86,7 +86,17 @@ def apply_local_config(
                 ),
             },
         ) from exc
-    capabilities = _capabilities_response(capability_service.get_capabilities())
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "local_config_invalid",
+                "message": (
+                    "无法应用本地运行设置。请检查 .env 中的数值配置是否有效，"
+                    "并确认 ThinkOR 项目目录可读写。"
+                ),
+            },
+        ) from exc
     return LocalConfigApplyResponse(
         **capabilities.model_dump(),
         created_from_template=result.created_from_template,

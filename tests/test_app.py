@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from ideaos_agent import config
+from ideaos_agent.api.local_management import get_csrf_token
 from ideaos_agent.domain.archive import ArchiveStatus
 from ideaos_agent.main import app
 
@@ -21,6 +23,28 @@ def test_root_exposes_basic_metadata() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
+
+
+def test_local_config_invalid_settings_returns_json_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text("IDEAOS_LLM_TIMEOUT_SECONDS=not-a-number\n", encoding="utf-8")
+    monkeypatch.setattr(config, "ENV_FILE_PATH", dotenv_path)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/local-config/apply",
+        headers={
+            "origin": "http://testserver",
+            "x-thinkor-csrf-token": get_csrf_token(),
+        },
+        json={"use_fake_llm": True, "use_fake_archive": True},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "local_config_invalid"
+    assert dotenv_path.read_text(encoding="utf-8") == "IDEAOS_LLM_TIMEOUT_SECONDS=not-a-number\n"
 
 
 def test_app_page_renders_html_interface() -> None:

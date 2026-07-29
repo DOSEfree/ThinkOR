@@ -43,7 +43,19 @@ def require_local_management_read_access(request: Request) -> None:
 
 
 def _require_local_request(request: Request) -> None:
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "local_config_invalid",
+                "message": (
+                    "无法应用本地运行设置。请检查 .env 中的数值配置是否有效，"
+                    "并确认 ThinkOR 项目目录可读写。"
+                ),
+            },
+        ) from exc
     client_host = request.client.host if request.client is not None else ""
     if settings.environment != "development" or client_host not in _LOOPBACK_HOSTS:
         _forbidden("Local configuration is available only from development loopback.")

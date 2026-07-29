@@ -14,7 +14,7 @@ python -m uvicorn ideaos_agent.main:app --reload
 
 不要从 Conda 的 `site-packages`、其他目录或快捷方式的默认目录启动服务。运行设置面板只会读写当前 ThinkOR 项目根目录中的 `.env`；项目根目录应保留 `.env.example`。
 
-更新 Git clone 后，必须在项目根目录再次执行 `python -m pip install .`，然后重启 Uvicorn。否则 Python 仍可能使用更新前安装在当前环境 `site-packages` 的代码。
+更新 Git clone 后，必须在项目根目录再次执行 `python -m pip install --upgrade .`，然后重启 Uvicorn。否则 Python 仍可能使用更新前安装在当前环境 `site-packages` 的代码。
 
 打开 `http://127.0.0.1:8000/app`。默认模式不会调用真实 LLM，也不会创建飞书文档；本地历史会保存到 `data/ideaos_agent.db`。
 

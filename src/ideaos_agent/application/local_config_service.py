@@ -35,6 +35,8 @@ class LocalConfigService:
     def apply_runtime_modes(self, selection: RuntimeModeSelection) -> LocalConfigApplyResult:
         """Persist mode flags and return the settings used by the next dependency build."""
 
+        # Reject unrelated invalid local settings before modifying either runtime flag.
+        self._settings_loader()
         update = self._dotenv_store.update_modes(selection)
         settings = self._settings_loader()
         overrides = tuple(

@@ -92,6 +92,24 @@ def test_inspect_detects_ready_other_identity_as_mismatch(monkeypatch) -> None:
     assert result.identity == "bot"
 
 
+def test_inspect_returns_unresponsive_when_cli_status_check_times_out(monkeypatch) -> None:
+    adapter = LarkCliStatusAdapter(command="lark-cli", archive_as="user", timeout_seconds=3)
+    monkeypatch.setattr(
+        "ideaos_agent.infrastructure.archive.lark_cli_status.shutil.which",
+        lambda _command: "C:/tools/lark-cli.exe",
+    )
+
+    def fail_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired("lark-cli", 3)
+
+    monkeypatch.setattr(adapter, "_run", fail_run)
+
+    result = adapter.inspect()
+
+    assert result.availability == "cli_unresponsive"
+    assert result.next_step == "retry_cli_check"
+
+
 def test_start_authorization_requires_ephemeral_url_and_device_code(monkeypatch) -> None:
     adapter = LarkCliStatusAdapter(command="lark-cli", archive_as="user", timeout_seconds=3)
     monkeypatch.setattr(

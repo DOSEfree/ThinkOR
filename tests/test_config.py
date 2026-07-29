@@ -12,6 +12,15 @@ def test_resolve_project_root_prefers_project_working_directory(tmp_path: Path) 
     assert resolve_project_root(project_directory) == project_directory
 
 
+def test_resolve_project_root_accepts_nested_project_directory(tmp_path: Path) -> None:
+    project_directory = tmp_path / "ThinkOR"
+    nested_directory = project_directory / "scripts" / "local"
+    nested_directory.mkdir(parents=True)
+    (project_directory / ".env.example").write_text("IDEAOS_USE_FAKE_LLM=true\n")
+
+    assert resolve_project_root(nested_directory) == project_directory
+
+
 def test_settings_default_to_dual_fake_without_dotenv(
     monkeypatch, tmp_path: Path
 ) -> None:

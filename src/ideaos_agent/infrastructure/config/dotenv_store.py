@@ -40,30 +40,33 @@ _PROCESS_LOCK = threading.RLock()
 def _exclusive_file_lock(lock_path: Path) -> Iterator[None]:
     """Use a small cross-process lock file while replacing dotenv content."""
 
-    with lock_path.open("a+", encoding="utf-8") as lock_file:
-        lock_file.seek(0)
-        if lock_file.read(1) == "":
-            lock_file.write("0")
-            lock_file.flush()
-
-        if os.name == "nt":
-            import msvcrt
-
+    try:
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
             lock_file.seek(0)
-            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-            try:
-                yield
-            finally:
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
+            if lock_file.read(1) == "":
+                lock_file.write("0")
+                lock_file.flush()
 
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
-            try:
-                yield
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+            if os.name == "nt":
+                import msvcrt
+
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+    except OSError as exc:
+        raise DotenvStoreError("Unable to lock the local dotenv settings.") from exc
 
 
 class DotenvModeStore:
@@ -93,8 +96,10 @@ class DotenvModeStore:
     def _validate_paths(self) -> None:
         if self._dotenv_path.name != ".env":
             raise DotenvStoreError("Only a project .env file may be updated.")
-        if self._dotenv_path.exists() and self._dotenv_path.is_symlink():
-            raise DotenvStoreError("Refusing to update a symlinked .env file.")
+        if self._dotenv_path.exists():
+            if self._dotenv_path.is_symlink() or not self._dotenv_path.is_file():
+                raise DotenvStoreError("A regular .env file is required.")
+            return
         if not self._template_path.is_file() or self._template_path.is_symlink():
             raise DotenvStoreError("A regular .env.example template is required.")
 

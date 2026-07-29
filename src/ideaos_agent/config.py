@@ -11,8 +11,9 @@ def resolve_project_root(working_directory: Path | None = None) -> Path:
     """Resolve the local project directory before falling back to the installed package path."""
 
     candidate = (working_directory or Path.cwd()).resolve()
-    if (candidate / "pyproject.toml").is_file() or (candidate / ".env.example").is_file():
-        return candidate
+    for directory in (candidate, *candidate.parents):
+        if (directory / "pyproject.toml").is_file() or (directory / ".env.example").is_file():
+            return directory
     return Path(__file__).resolve().parents[2]
 
 

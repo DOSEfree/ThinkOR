@@ -49,7 +49,7 @@ ThinkOR 围绕一条完整但足够克制的工作流展开：
 先 clone 仓库并进入目录：
 
 ```powershell
-git clone https://github.com/DOSEfree/ThinkOR.git ThinkOR
+git clone --branch release/v0.7.0 --single-branch https://github.com/DOSEfree/ThinkOR.git ThinkOR
 cd ThinkOR
 python -m pip install --upgrade pip
 python -m pip install .
@@ -69,21 +69,26 @@ python -m uvicorn ideaos_agent.main:app --reload
 
 第一次打开页面时，ThinkOR 默认使用 Fake LLM 和 Fake Archive，因此无需配置任何 API Key，即可完整体验分析、澄清、版本演进和本地历史流程。
 
-右上角的“菜单 / Menu”可打开运行设置。LLM 与飞书归档可独立选择 Fake 或 Real；面板在本机开发环境的 loopback 地址上可用，只会从 `.env.example` 创建 `.env`，或更新其中的 `IDEAOS_USE_FAKE_LLM` 与 `IDEAOS_USE_FAKE_ARCHIVE`。API Key、模型名、飞书 Token、代理凭据等 Secret 必须由用户在本机 `.env` 手动填写，页面不会接收、展示或返回这些值。
+右上角的“菜单 / Menu”可打开运行设置。LLM 与飞书归档可独立选择 Fake 或 Real；面板在本机开发环境的 loopback 地址上可用：不存在 `.env` 时从 `.env.example` 创建它，已有 `.env` 时仅更新其中的 `IDEAOS_USE_FAKE_LLM` 与 `IDEAOS_USE_FAKE_ARCHIVE`。API Key、模型名、飞书 Token、代理凭据等 Secret 必须由用户在本机 `.env` 手动填写，页面不会接收、展示或返回这些值。
 
 如果希望接入自己的模型或启用真实飞书归档，可以参考 [SETUP.md](SETUP.md)。
 
 ### 更新已 Clone 的项目
 
-停止服务后，在 ThinkOR 项目根目录更新代码并重新安装本地包，再启动服务：
+停止服务后，在已 clone 的 ThinkOR 项目根目录运行以下两条更新命令：
 
 ```powershell
 git pull --ff-only
-python -m pip install .
+python -m pip install --upgrade .
+```
+
+然后从同一目录重新启动服务：
+
+```powershell
 python -m uvicorn ideaos_agent.main:app --reload
 ```
 
-`.env` 和 `data/ideaos_agent.db` 是本机私有配置与历史，不会被 Git 更新覆盖。通过 ZIP 下载或复制得到的目录不包含 `.git`，不能使用 `git pull`；请先 clone 到新的目录，再仅迁移 `.env` 与 `data/`。
+上述 clone 命令会直接进入 `release/v0.7.0` 分支；已 clone 旧分支的项目只需首次执行 `git switch --track origin/release/v0.7.0`，之后仍使用两条更新命令即可。`.env` 和 `data/ideaos_agent.db` 是本机私有配置与历史，不会被 Git 更新覆盖；SQLite 启动迁移只会补齐或修正已知的归档状态，不会删除会话或版本。通过 ZIP 下载或复制得到的目录不包含 `.git`，不能使用 `git pull`；请先 clone 到新的目录，再仅迁移 `.env` 与 `data/`。
 
 ## 项目结构
 

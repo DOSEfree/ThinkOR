@@ -62,6 +62,35 @@ def test_update_preserves_existing_secret_and_other_values(tmp_path: Path) -> No
     assert "IDEAOS_LLM_MODEL=existing-model" in content
 
 
+def test_update_existing_dotenv_does_not_require_template(tmp_path: Path) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "IDEAOS_USE_FAKE_LLM=true\nIDEAOS_USE_FAKE_ARCHIVE=true\n",
+        encoding="utf-8",
+    )
+    store = DotenvModeStore(
+        dotenv_path=dotenv_path,
+        template_path=tmp_path / ".env.example",
+    )
+
+    result = store.update_modes(
+        RuntimeModeSelection(use_fake_llm=False, use_fake_archive=True)
+    )
+
+    assert result.created_from_template is False
+    assert "IDEAOS_USE_FAKE_LLM=false" in dotenv_path.read_text(encoding="utf-8")
+
+
+def test_update_without_dotenv_requires_regular_template(tmp_path: Path) -> None:
+    store = DotenvModeStore(
+        dotenv_path=tmp_path / ".env",
+        template_path=tmp_path / ".env.example",
+    )
+
+    with pytest.raises(DotenvStoreError, match="template"):
+        store.update_modes(RuntimeModeSelection(use_fake_llm=True, use_fake_archive=True))
+
+
 def test_fake_llm_with_real_archive_requires_acknowledgement(tmp_path: Path) -> None:
     template_path = tmp_path / ".env.example"
     dotenv_path = tmp_path / ".env"
@@ -134,7 +163,6 @@ def test_apply_local_config_returns_json_conflict_when_dotenv_is_unavailable() -
             RuntimeModeInput(use_fake_llm=True, use_fake_archive=True),
             None,
             UnavailableLocalConfigService(),
-            None,
         )
 
     unavailable_message = (
@@ -146,3 +174,19 @@ def test_apply_local_config_returns_json_conflict_when_dotenv_is_unavailable() -
         "code": "local_config_unavailable",
         "message": unavailable_message,
     }
+
+
+def test_apply_local_config_returns_json_error_for_invalid_existing_settings() -> None:
+    class InvalidSettingsLocalConfigService:
+        def apply_runtime_modes(self, _selection: RuntimeModeSelection) -> None:
+            raise ValueError("invalid timeout")
+
+    with pytest.raises(HTTPException) as exc_info:
+        apply_local_config(
+            RuntimeModeInput(use_fake_llm=True, use_fake_archive=True),
+            None,
+            InvalidSettingsLocalConfigService(),
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail["code"] == "local_config_invalid"

@@ -58,16 +58,15 @@ class LarkCliStatusAdapter:
                 next_step="install_cli",
             )
 
-        version = self._read_version(command_path)
-        if version is None:
-            return LarkCliStatus(
-                availability="cli_unresponsive",
-                identity="unknown",
-                version=None,
-                next_step="retry_cli_check",
-            )
+        try:
+            version = self._read_version(command_path)
+            if version is None:
+                return self._unresponsive_status()
 
-        completed = self._run([command_path, "auth", "status", "--json", "--verify"])
+            completed = self._run([command_path, "auth", "status", "--json", "--verify"])
+        except (OSError, subprocess.TimeoutExpired):
+            return self._unresponsive_status()
+
         raw_payload = completed.stdout if completed.returncode == 0 else completed.stderr
         payload = self._parse_json(raw_payload)
         if payload is None:
@@ -98,6 +97,15 @@ class LarkCliStatusAdapter:
             identity="unknown",
             version=version,
             next_step="authorize_user" if self._archive_as == "user" else "configure_bot",
+        )
+
+    @staticmethod
+    def _unresponsive_status() -> LarkCliStatus:
+        return LarkCliStatus(
+            availability="cli_unresponsive",
+            identity="unknown",
+            version=None,
+            next_step="retry_cli_check",
         )
 
     def check_update(self) -> bool:
