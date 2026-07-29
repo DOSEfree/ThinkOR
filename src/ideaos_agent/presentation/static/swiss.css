@@ -2526,6 +2526,13 @@ body {
   color: var(--brand);
 }
 
+.archive-panel-simulated .archive-badge,
+.history-tag.history-tag-simulated {
+  border-color: rgba(124, 215, 255, 0.42);
+  background: rgba(124, 215, 255, 0.1);
+  color: #7cd7ff;
+}
+
 .archive-panel-succeeded .archive-badge,
 .history-tag.history-tag-success {
   border-color: rgba(167, 231, 93, 0.48);

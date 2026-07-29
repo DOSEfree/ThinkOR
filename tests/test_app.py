@@ -253,6 +253,13 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert 'fetch("/api/v1/threads/sync-remote-archives", {' in response.text
     assert 'if (archiveStatus === "succeeded") {' in response.text
     assert 'return "";' in response.text
+    assert "还没有已完成的本地想法。完成一次分析后，它会出现在这里。" in response.text
+    assert "function getTrustedFeishuArchiveUrl(value)" in response.text
+    feishu_host_allowlist = (
+        'const isFeishuHost = host === "feishu.cn" || host.endsWith(".feishu.cn");'
+    )
+    assert feishu_host_allowlist in response.text
+    assert "模拟归档（未写入飞书）" in response.text
     assert "删除这条想法线程" in response.text
     assert "1 个版本 / VERSION" in response.text
     assert 'historySessionList.classList.remove("is-scrolling")' in response.text

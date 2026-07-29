@@ -94,3 +94,29 @@ def test_sqlite_store_reads_old_analysis_row_without_root_session_id_value(tmp_p
 
     assert fetched_record is not None
     assert fetched_record.root_session_id == "sess_legacy_analysis"
+
+
+def test_sqlite_store_migrates_legacy_fake_archive_url(tmp_path: Path) -> None:
+    db_path = tmp_path / "ideaos_agent.db"
+    store = SqliteSessionArchiveStore(db_path)
+    archived_at = datetime.now(UTC)
+    legacy_record = SessionRecord(
+        session_id="sess_legacy_fake",
+        root_session_id="sess_legacy_fake",
+        original_content="我想验证模拟归档不会生成外链。",
+        input_echo="我想验证模拟归档不会生成外链。",
+        clarification_count=0,
+        archive_status=ArchiveStatus.SUCCEEDED,
+        archive_url="https://feishu.example.com/docx/sess_legacy_fake",
+        completed_at=archived_at,
+        archived_at=archived_at,
+    )
+    store.save_session_record(legacy_record)
+
+    migrated_store = SqliteSessionArchiveStore(db_path)
+    migrated_record = migrated_store.get_session_record("sess_legacy_fake")
+
+    assert migrated_record is not None
+    assert migrated_record.archive_status == ArchiveStatus.SIMULATED
+    assert migrated_record.archive_url is None
+    assert migrated_record.archived_at == archived_at

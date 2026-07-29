@@ -118,6 +118,11 @@ const ARCHIVE_STATUS_META = {
     label: "ARCHIVE IN PROGRESS",
     note: "The result is ready and the archive job has been triggered for this session.",
   },
+  simulated: {
+    badge: "SIMULATED",
+    label: "SIMULATED ARCHIVE",
+    note: "Fake Archive is enabled. No Feishu document was created.",
+  },
   succeeded: {
     badge: "SUCCEEDED",
     label: "ARCHIVED TO FEISHU",
@@ -1149,7 +1154,7 @@ function renderHistorySessionList(items, query = currentHistorySearchQuery) {
   if (!Array.isArray(items) || !items.length) {
     historySessionList.innerHTML = normalizeHistorySearchQuery(query)
       ? "<p class=\"history-empty\">未找到匹配的历史想法。 / No matching ideas found.</p>"
-      : "<p class=\"history-empty\">No completed local threads yet.</p>";
+      : "<p class=\"history-empty\">还没有已完成的本地想法。完成一次分析后，它会出现在这里。</p>";
     return;
   }
 
@@ -2024,9 +2029,7 @@ function renderArchivePanel(payload) {
     ? payload.archive_status
     : "not_triggered";
   const archiveSummary = resolveArchiveSummary(payload, archiveStatus, sessionKind);
-  const archiveLink = typeof payload.archive_url === "string" && payload.archive_url
-    ? payload.archive_url
-    : null;
+  const archiveLink = getTrustedFeishuArchiveUrl(payload.archive_url);
   const rootRow = rootSessionId
     ? `
       <article class="archive-meta-item">
@@ -2194,6 +2197,9 @@ function resolveArchiveSummary(payload, archiveStatus, sessionKind) {
 
   if (archiveStatus === "succeeded") {
     return {local: "本地已生成", archive: "飞书已归档"};
+  }
+  if (archiveStatus === "simulated") {
+    return {local: "本地已生成", archive: "模拟归档（未写入飞书）"};
   }
   if (archiveStatus === "pending") {
     return {local: "本地已生成", archive: "飞书归档中"};
@@ -2400,7 +2406,29 @@ function getHistoryStatusClass(archiveStatus) {
   if (normalized === "pending") {
     return "history-tag-pending";
   }
+  if (normalized === "simulated") {
+    return "history-tag-simulated";
+  }
   return "";
+}
+
+function getTrustedFeishuArchiveUrl(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(value);
+    const host = parsedUrl.hostname.toLowerCase();
+    const isFeishuHost = host === "feishu.cn" || host.endsWith(".feishu.cn");
+    const isLarkHost = host === "larksuite.com" || host.endsWith(".larksuite.com");
+    if (parsedUrl.protocol !== "https:" || (!isFeishuHost && !isLarkHost)) {
+      return null;
+    }
+    return value.trim();
+  } catch (_error) {
+    return null;
+  }
 }
 
 function renderHistoryArchiveBadge(archiveStatus) {

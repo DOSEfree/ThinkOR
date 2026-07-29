@@ -13,13 +13,13 @@ from ideaos_agent.domain.archive import (
 
 
 class FakeSessionArchiver(SessionArchiver):
-    """Return deterministic archive success results without external side effects."""
+    """Return deterministic simulated results without external side effects."""
 
     def archive_session(self, payload: SessionArchivePayload) -> ArchiveResult:
         archived_at = datetime.now(UTC)
         return ArchiveResult(
-            archive_status=ArchiveStatus.SUCCEEDED,
-            archive_url=f"https://feishu.example.com/docx/{payload.session_id}",
+            archive_status=ArchiveStatus.SIMULATED,
+            archive_url=None,
             archive_error=None,
             archived_at=archived_at,
         )

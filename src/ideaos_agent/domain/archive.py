@@ -15,6 +15,7 @@ class ArchiveStatus(StrEnum):
 
     NOT_TRIGGERED = "not_triggered"
     PENDING = "pending"
+    SIMULATED = "simulated"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
@@ -134,6 +135,16 @@ class SessionRecord(BaseModel):
                 raise ValueError("SUCCEEDED sessions must include archived_at.")
             if self.archive_url is None:
                 raise ValueError("SUCCEEDED sessions must include archive_url.")
+
+        if self.archive_status == ArchiveStatus.SIMULATED:
+            if self.completed_at is None:
+                raise ValueError("SIMULATED sessions must include completed_at.")
+            if self.archived_at is None:
+                raise ValueError("SIMULATED sessions must include archived_at.")
+            if self.archive_url is not None:
+                raise ValueError("SIMULATED sessions must not include archive_url.")
+            if self.archive_error is not None:
+                raise ValueError("SIMULATED sessions must not include archive_error.")
 
         if self.archive_status == ArchiveStatus.FAILED:
             if self.completed_at is None:
@@ -284,11 +295,16 @@ class ArchiveResult(BaseModel):
                 raise ValueError("archive_url is required for SUCCEEDED archive results.")
             if self.archive_error is not None:
                 raise ValueError("archive_error is not allowed for SUCCEEDED archive results.")
+        elif self.archive_status == ArchiveStatus.SIMULATED:
+            if self.archive_url is not None:
+                raise ValueError("archive_url is not allowed for SIMULATED archive results.")
+            if self.archive_error is not None:
+                raise ValueError("archive_error is not allowed for SIMULATED archive results.")
         elif self.archive_status == ArchiveStatus.FAILED:
             if self.archive_url is not None:
                 raise ValueError("archive_url is not allowed for FAILED archive results.")
         else:
-            raise ValueError("ArchiveResult only supports succeeded or failed states.")
+            raise ValueError("ArchiveResult only supports simulated, succeeded, or failed states.")
 
         return self
 
