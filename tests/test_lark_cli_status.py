@@ -12,12 +12,13 @@ def test_inspect_returns_authenticated_state_from_current_status_shape(monkeypat
     responses = iter(
         [
             subprocess.CompletedProcess(["lark-cli", "--version"], 0, "1.0.77\n", ""),
+            subprocess.CompletedProcess(["lark-cli", "config", "show"], 0, "configured\n", ""),
             subprocess.CompletedProcess(
                 ["lark-cli", "auth", "status"],
                 0,
                 (
                     '{"identity": "user", "verified": true, "identities": {'
-                    '"user": {"status": "ready", "verified": true}, '
+                    '"user": {"status": "needs_refresh", "verified": true}, '
                     '"bot": {"status": "ready", "verified": true}}}'
                 ),
                 "",
@@ -43,6 +44,7 @@ def test_inspect_returns_unauthenticated_when_selected_identity_is_not_ready(mon
     responses = iter(
         [
             subprocess.CompletedProcess(["lark-cli", "--version"], 0, "1.0.77\n", ""),
+            subprocess.CompletedProcess(["lark-cli", "config", "show"], 0, "configured\n", ""),
             subprocess.CompletedProcess(
                 ["lark-cli", "auth", "status"],
                 0,
@@ -72,6 +74,7 @@ def test_inspect_detects_ready_other_identity_as_mismatch(monkeypatch) -> None:
     responses = iter(
         [
             subprocess.CompletedProcess(["lark-cli", "--version"], 0, "1.0.77\n", ""),
+            subprocess.CompletedProcess(["lark-cli", "config", "show"], 0, "configured\n", ""),
             subprocess.CompletedProcess(
                 ["lark-cli", "auth", "status"],
                 0,
@@ -108,6 +111,27 @@ def test_inspect_returns_unresponsive_when_cli_status_check_times_out(monkeypatc
 
     assert result.availability == "cli_unresponsive"
     assert result.next_step == "retry_cli_check"
+
+
+def test_inspect_requires_cli_application_configuration_before_authorization(monkeypatch) -> None:
+    adapter = LarkCliStatusAdapter(command="lark-cli", archive_as="user", timeout_seconds=3)
+    monkeypatch.setattr(
+        "ideaos_agent.infrastructure.archive.lark_cli_status.shutil.which",
+        lambda _command: "C:/tools/lark-cli.exe",
+    )
+    responses = iter(
+        [
+            subprocess.CompletedProcess(["lark-cli", "--version"], 0, "1.0.77\n", ""),
+            subprocess.CompletedProcess(["lark-cli", "config", "show"], 1, "", "not configured"),
+        ]
+    )
+    monkeypatch.setattr(adapter, "_run", lambda *_args, **_kwargs: next(responses))
+
+    result = adapter.inspect()
+
+    assert result.availability == "cli_unconfigured"
+    assert result.identity == "unknown"
+    assert result.next_step == "initialize_cli"
 
 
 def test_start_authorization_requires_ephemeral_url_and_device_code(monkeypatch) -> None:

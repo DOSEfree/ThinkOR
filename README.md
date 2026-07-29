@@ -49,7 +49,7 @@ ThinkOR 围绕一条完整但足够克制的工作流展开：
 先 clone 仓库并进入目录：
 
 ```powershell
-git clone --branch release/v0.7.0 --single-branch https://github.com/DOSEfree/ThinkOR.git ThinkOR
+git clone https://github.com/DOSEfree/ThinkOR.git ThinkOR
 cd ThinkOR
 python -m pip install --upgrade pip
 python -m pip install .
@@ -61,7 +61,8 @@ python -m uvicorn ideaos_agent.main:app --reload
 - 上面的命令按 Windows PowerShell 编写
 - 如果你希望隔离环境，可以自行使用 `conda` 或 `venv`，但不是首次体验这个 demo 的必需前提
 - 第一次体验不需要创建 `.env`，也不需要准备 API Key 或飞书凭据
-- 需要手动配置真实能力时，再执行 `copy .env.example .env`；在 macOS 或 Linux 上使用 `cp .env.example .env`
+- 需要切换真实能力时，直接在页面的“菜单 / MENU -> 运行设置”选择模式并保存；页面会从 `.env.example` 创建本机 `.env`
+- 也可以手动执行 `copy .env.example .env`；在 macOS 或 Linux 上使用 `cp .env.example .env`
 
 启动完成后访问：
 
@@ -88,7 +89,7 @@ python -m pip install --upgrade .
 python -m uvicorn ideaos_agent.main:app --reload
 ```
 
-上述 clone 命令会直接进入 `release/v0.7.0` 分支；已 clone 旧分支的项目只需首次执行 `git switch --track origin/release/v0.7.0`，之后仍使用两条更新命令即可。`.env` 和 `data/ideaos_agent.db` 是本机私有配置与历史，不会被 Git 更新覆盖；SQLite 启动迁移只会补齐或修正已知的归档状态，不会删除会话或版本。通过 ZIP 下载或复制得到的目录不包含 `.git`，不能使用 `git pull`；请先 clone 到新的目录，再仅迁移 `.env` 与 `data/`。
+普通 clone 默认跟踪 `main`，上述两条命令会更新当前跟踪分支。只有维护者需要验证发布分支时，才显式切换到对应 `release/*` 分支。`.env` 和 `data/ideaos_agent.db` 是本机私有配置与历史，不会被 Git 更新覆盖；SQLite 启动迁移只会补齐或修正已知的归档状态，不会删除会话或版本。通过 ZIP 下载或复制得到的目录不包含 `.git`，不能使用 `git pull`；请先 clone 到新的目录，再仅迁移 `.env` 与 `data/`。
 
 ## 项目结构
 
@@ -118,6 +119,10 @@ src/ideaos_agent/
 | 模拟内容归档 | Fake | Real | 必须在页面显式确认后才可保存；会写入真实飞书 |
 
 面板保存后的模式对后续请求立即生效。显式设置的系统环境变量优先于 `.env`；页面会提示此类覆盖，避免用户误以为保存未生效。真实 LLM 不会被系统自动调用测试，真实飞书的“已授权”也只代表 CLI 准备就绪，首次成功归档才是最终验证。完整配置、飞书身份边界与排障方式见 [SETUP.md](SETUP.md)。
+
+飞书首次使用时，页面会依次提示安装 CLI、配置本机 CLI 应用、完成用户授权和重新检测。ThinkOR 不会代为执行全局 npm 安装，也不会读取或保存 CLI 的 App Secret、Token、device code 或原始命令输出。右上角的个人资料按钮可修改本浏览器中的显示名称和头像，不会写入服务端、SQLite 或 `.env`。
+
+`.env.lock` 是 ThinkOR 在原子更新 `.env` 时保留的跨进程锁文件，不包含 Secret，已被 Git 忽略。服务运行期间不要手动删除它。
 
 ## 版本说明
 

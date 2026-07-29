@@ -18,13 +18,13 @@ python -m uvicorn ideaos_agent.main:app --reload
 
 打开 `http://127.0.0.1:8000/app`。默认模式不会调用真实 LLM，也不会创建飞书文档；本地历史会保存到 `data/ideaos_agent.db`。
 
-只有准备使用真实能力时，才创建本地配置文件：
+只有准备手动编辑真实能力配置时，才需要先创建本地配置文件：
 
 ```powershell
 copy .env.example .env
 ```
 
-macOS 或 Linux 使用 `cp .env.example .env`。`.env` 属于本机私有配置，不应提交到 Git。
+macOS 或 Linux 使用 `cp .env.example .env`。也可以在页面先选择模式并点击“保存并应用”，页面会从 `.env.example` 创建 `.env`。`.env` 属于本机私有配置，不应提交到 Git。
 
 ## 运行设置面板
 
@@ -41,7 +41,7 @@ IDEAOS_USE_FAKE_LLM=true
 IDEAOS_USE_FAKE_ARCHIVE=true
 ```
 
-它不会接受、读取、显示、返回或写入 API Key、模型名、飞书 Token、App Secret、代理凭据或完整 `.env` 内容。若系统环境变量中显式设置了这两个模式键，它们会优先于 `.env`；面板会显示覆盖提示。
+它不会接受、读取、显示、返回或写入 API Key、模型名、飞书 Token、App Secret、代理凭据或完整 `.env` 内容。若系统环境变量中显式设置了这两个模式键，它们会优先于 `.env`；面板会显示覆盖提示。`.env.lock` 是更新 `.env` 时保留的跨进程锁文件，不包含 Secret，已被 Git 忽略；服务运行期间不要手动删除它。
 
 `Fake LLM + Real Archive` 会将模拟生成内容写入真实飞书。选择此组合时，必须勾选页面上的明确确认项才能保存。
 
@@ -81,7 +81,13 @@ npm install -g @larksuite/cli
 lark-cli --version
 ```
 
-首次使用 CLI 还需要完成飞书应用配置。请使用 `lark-cli config init` 的交互流程，或绑定你已有的 CLI profile；当前 ThinkOR 页面不会创建或修改飞书应用配置。
+首次使用 CLI 还需要完成飞书应用配置。ThinkOR 不会执行全局 npm 安装，但可以在本地页面协助完成后续 CLI 应用配置与 user 授权：
+
+1. 在“运行设置”选择“真实归档”并保存，然后点击“重新检测飞书”。
+2. 显示“未安装 CLI”时，在本机终端执行上方安装命令，完成后回到页面重新检测。
+3. 显示“等待完成 CLI 应用配置”时，点击“开始配置飞书 CLI”。ThinkOR 会在本机启动固定的 `lark-cli config init --new --lang zh_cn` 命令，并只把 CLI 给出的配置链接转换为当前页面中的短时二维码和链接。
+4. 在飞书页面完成应用配置后，回到 ThinkOR 点击“我已完成配置，重新检测”。ThinkOR 不读取或保存 App Secret。
+5. 页面显示“未授权”时，点击“开始用户授权”，扫描短时二维码并在完成后点击“我已授权，检查状态”。device code 只在 ThinkOR 服务进程内存中短暂保存，完成或过期后立即清除。
 
 ### 2. 选择身份
 
@@ -114,6 +120,7 @@ IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS=30
 | 真实 LLM 缺少 `api_key` 或 `model` | `.env` 尚未完整配置 | 手动填写对应本机字段 |
 | 未安装 CLI | 找不到 `lark-cli` | 安装 CLI 后点击“重新检测飞书” |
 | CLI 不可用 | CLI 无响应或命令配置错误 | 检查 `IDEAOS_FEISHU_CLI_COMMAND` 与 CLI 本身 |
+| 等待完成 CLI 应用配置 | 已安装 CLI，但尚未创建/绑定本机应用配置 | 在页面点击“开始配置飞书 CLI”，完成二维码流程后重新检测 |
 | 未授权 | 目标身份尚未可用 | user 可从页面发起二维码授权；bot 到开发者后台处理权限 |
 | 身份不匹配 | 可用身份与 `IDEAOS_FEISHU_ARCHIVE_AS` 不一致 | 修改本机配置或完成目标身份配置 |
 | 已授权，待首次归档验证 | CLI 授权状态正常 | 使用测试目录完成一次真实归档 |

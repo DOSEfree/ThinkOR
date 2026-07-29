@@ -69,7 +69,6 @@ def apply_local_config(
 
     try:
         result = service.apply_runtime_modes(_selection(payload))
-        capabilities = _capabilities_response(get_runtime_capability_service().get_capabilities())
     except RuntimeModeSelectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -97,8 +96,22 @@ def apply_local_config(
                 ),
             },
         ) from exc
+
+    try:
+        capabilities = _capabilities_response(get_runtime_capability_service().get_capabilities())
+    except (OSError, RuntimeError, ValueError):
+        capabilities = RuntimeCapabilitiesResponse(
+            use_fake_llm=result.effective_use_fake_llm,
+            use_fake_archive=result.effective_use_fake_archive,
+            llm_state="unknown",
+            llm_missing_items=[],
+            archive_state="unknown",
+            lark=None,
+            capabilities_checked=False,
+        )
+
     return LocalConfigApplyResponse(
-        **capabilities.model_dump(),
+        **capabilities.model_dump(exclude={"process_environment_overrides"}),
         created_from_template=result.created_from_template,
         updated_keys=["IDEAOS_USE_FAKE_LLM", "IDEAOS_USE_FAKE_ARCHIVE"],
         process_environment_overrides=list(result.process_environment_overrides),

@@ -74,6 +74,10 @@ def test_app_page_renders_html_interface() -> None:
     assert 'id="workspace-busy"' in response.text
     assert 'id="loading-dialog"' in response.text
     assert 'id="loading-dialog-elapsed"' in response.text
+    assert 'class="topbar-user-name" id="profile-name"' in response.text
+    assert 'class="topbar-control-pill topbar-profile-pill"' in response.text
+    assert 'data-tooltip="编辑个人资料"' in response.text
+    assert 'class="secondary-button profile-avatar-reset"' in response.text
     assert 'id="archive-retry-dialog"' in response.text
     assert 'id="request-retry-dialog"' in response.text
     assert 'id="delete-confirm-dialog"' in response.text
@@ -98,7 +102,10 @@ def test_app_page_renders_v0_4_shell_and_brand_assets() -> None:
     assert "/static/assets/logo/refresh.png" in response.text
     assert "历史记录" in response.text
     assert "/ HISTORY" in response.text
-    assert 'class="topbar-user-value"' in response.text
+    assert 'id="profile-open"' in response.text
+    assert 'id="profile-avatar"' in response.text
+    assert 'id="runtime-settings-open"' in response.text
+    assert 'class="topbar-control-pill topbar-menu-pill"' in response.text
     assert "当前链路 / CURRENT THREAD" in response.text
     slogan = (
         "Your AI agent for exploring ideas, shaping thoughts, and creating possibilities."
@@ -139,6 +146,8 @@ def test_app_styles_expose_thinkor_theme_and_interaction_hooks() -> None:
     assert ".loading-slot-window" in response.text
     assert "cubic-bezier(0.72, 0, 0.28, 1)" in response.text
     assert ".loading-slot-gear" in response.text
+    assert ".topbar-control-pill" in response.text
+    assert ".profile-dialog" in response.text
     assert "@keyframes loading-slot-spark-six" in response.text
     assert ".completion-notice" in response.text
     assert ".app-tooltip" in response.text
@@ -277,7 +286,7 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert 'fetch("/api/v1/threads/sync-remote-archives", {' in response.text
     assert 'if (archiveStatus === "succeeded") {' in response.text
     assert 'return "";' in response.text
-    assert "还没有已完成的本地想法。完成一次分析后，它会出现在这里。" in response.text
+    assert "请开始进行ThinkOR的第一次分析，想法归档会出现在这里。" in response.text
     assert "function getTrustedFeishuArchiveUrl(value)" in response.text
     feishu_host_allowlist = (
         'const isFeishuHost = host === "feishu.cn" || host.endsWith(".feishu.cn");'
@@ -286,6 +295,10 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert "模拟归档（未写入飞书）" in response.text
     assert 'fetch("/api/v1/local-config/apply"' in response.text
     assert "const payload = await response.json().catch(() => ({}));" in response.text
+    assert "function startLarkConfiguration()" in response.text
+    assert "/api/v1/lark/setup/configuration/start" in response.text
+    assert "function initializeProfile()" in response.text
+    assert '"补充并继续生成 / CONTINUE"' in response.text
     assert "删除这条想法线程" in response.text
     assert "1 个版本 / VERSION" in response.text
     assert 'historySessionList.classList.remove("is-scrolling")' in response.text

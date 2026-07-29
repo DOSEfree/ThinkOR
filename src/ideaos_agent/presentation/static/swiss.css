@@ -3193,7 +3193,7 @@ body {
 
 .loading-slot-gear {
   display: inline-block;
-  font-size: 1.55rem;
+  font-size: 1.32rem;
   transform: translateY(1px);
 }
 
@@ -3399,5 +3399,298 @@ body {
   .loading-dialog-copy {
     justify-items: center;
     text-align: center;
+  }
+}
+
+/* Local controls share one compact pill treatment without changing the app layout. */
+.topbar-control-pill {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 36px;
+  overflow: hidden;
+  border: 1px solid rgba(9, 10, 11, 0.92);
+  border-radius: var(--radius-pill);
+  padding: 3px 12px;
+  background: #090a0b;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.topbar-menu-pill {
+  min-width: 116px;
+  justify-content: center;
+  padding-inline: 14px;
+}
+
+.topbar-control-hover {
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  bottom: -36px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--brand);
+  transform: translateX(-50%) scale(0);
+  transition: transform 210ms ease;
+}
+
+.topbar-control-label-stack {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: 1em;
+  overflow: hidden;
+  line-height: 1;
+}
+
+.topbar-control-label,
+.topbar-control-label-hover {
+  grid-area: 1 / 1;
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-strong);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: transform 190ms ease, opacity 190ms ease;
+}
+
+.topbar-control-label-hover {
+  color: #090a0b;
+  opacity: 0;
+  transform: translateY(115%);
+}
+
+.topbar-control-pill:hover .topbar-control-hover,
+.topbar-control-pill:focus-visible .topbar-control-hover {
+  transform: translateX(-50%) scale(4.2);
+}
+
+.topbar-control-pill:hover .topbar-control-label,
+.topbar-control-pill:focus-visible .topbar-control-label {
+  opacity: 0;
+  transform: translateY(-115%);
+}
+
+.topbar-control-pill:hover .topbar-control-label-hover,
+.topbar-control-pill:focus-visible .topbar-control-label-hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.topbar-control-pill:focus-visible {
+  outline: 2px solid #090a0b;
+  outline-offset: 3px;
+}
+
+.topbar-user-name {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  flex: 0 1 180px;
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.71rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topbar-profile-pill {
+  flex: 0 0 36px;
+  width: 36px;
+  padding: 3px;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.topbar-profile-pill .topbar-user-avatar-shell {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  background: var(--panel-soft);
+}
+
+.topbar-profile-pill .topbar-user-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: none;
+  opacity: 1;
+}
+
+.runtime-lark-configuration,
+.runtime-lark-authorization {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.runtime-lark-configuration.hidden,
+.runtime-lark-authorization.hidden,
+#runtime-lark-authorize.hidden,
+#runtime-lark-configure.hidden,
+.runtime-lark-install-command.hidden {
+  display: none;
+}
+
+.runtime-lark-configuration img,
+.runtime-lark-authorization img {
+  width: min(220px, 100%);
+  aspect-ratio: 1;
+  background: #ffffff;
+  image-rendering: pixelated;
+}
+
+.runtime-lark-configuration a,
+.runtime-lark-authorization a {
+  color: var(--brand);
+  font-size: 0.86rem;
+}
+
+.profile-dialog {
+  position: fixed;
+  z-index: 72;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.profile-dialog.hidden {
+  display: none;
+}
+
+.profile-dialog-card {
+  display: grid;
+  gap: 18px;
+  width: min(460px, 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 24px;
+}
+
+.profile-dialog-head,
+.profile-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.profile-dialog-head h2 {
+  margin: 0;
+  font-family: var(--font-strong);
+}
+
+.profile-field {
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.profile-field input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--workspace-bg);
+  color: var(--ink);
+  padding: 10px 12px;
+}
+
+.profile-field input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.profile-avatar-editor {
+  display: grid;
+  grid-template-columns: 72px max-content max-content;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-avatar-editor img {
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--workspace-bg);
+  object-fit: cover;
+}
+
+.profile-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.profile-avatar-reset {
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+
+.profile-avatar-reset:hover {
+  border-color: var(--brand);
+  color: var(--ink);
+}
+
+.profile-dialog-status {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@media (max-width: 720px) {
+  .topbar-user {
+    gap: 8px;
+  }
+
+  .topbar-profile-pill {
+    flex-basis: 36px;
+  }
+
+  .topbar-menu-pill {
+    min-width: 98px;
+    padding-inline: 10px;
+  }
+
+  .profile-avatar-editor {
+    grid-template-columns: 72px 1fr;
+  }
+
+  .profile-avatar-editor .profile-avatar-reset {
+    grid-column: 2;
   }
 }

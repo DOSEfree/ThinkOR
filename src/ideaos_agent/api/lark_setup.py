@@ -28,14 +28,30 @@ def start_lark_setup(
 ) -> dict[str, str]:
     """Start one short-lived user QR authorization; no device code leaves memory."""
 
-    if get_settings().feishu_archive_as != "user":
+    settings = get_settings()
+    if settings.feishu_archive_as != "user":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "bot_identity_requires_console_setup",
-                "message": (
-                    "Bot archive identity must be configured in the Feishu developer console."
-                ),
+                "message": "当前使用 Bot 身份，请在飞书开发者后台完成应用配置和授权。",
+            },
+        )
+    readiness = service.recheck()
+    if readiness.availability == "cli_unconfigured":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "lark_cli_configuration_required",
+                "message": "请先完成飞书 CLI 应用配置，再发起用户授权。",
+            },
+        )
+    if readiness.availability in {"cli_missing", "cli_unresponsive"}:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "lark_cli_unavailable",
+                "message": "飞书 CLI 当前不可用。请安装或检查本机 CLI 后重新检测。",
             },
         )
     try:
@@ -43,12 +59,60 @@ def start_lark_setup(
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "lark_setup_unavailable", "message": str(exc)},
+            detail={
+                "code": "lark_setup_unavailable",
+                "message": "无法发起飞书用户授权。请重新检测 CLI 状态后重试。",
+            },
         ) from exc
     return {
         "flow_id": flow.flow_id,
         "verification_url": flow.verification_url,
         "expires_at": flow.expires_at.isoformat(),
+    }
+
+
+@router.post("/setup/configuration/start")
+def start_lark_configuration(
+    _: LocalAccessDependency,
+    service: LarkSetupServiceDependency,
+) -> dict[str, str | None]:
+    """Start the short-lived browser flow that configures a local CLI application."""
+
+    try:
+        flow = service.start_cli_configuration()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "lark_configuration_unavailable",
+                "message": "无法启动飞书 CLI 应用配置。请确认 lark-cli 可用后重试。",
+            },
+        ) from exc
+    return {
+        "flow_id": flow.flow_id,
+        "status": flow.status,
+        "verification_url": flow.verification_url,
+    }
+
+
+@router.get("/setup/configuration/{flow_id}")
+def get_lark_configuration(
+    flow_id: str,
+    _: LocalReadAccessDependency,
+    service: LarkSetupServiceDependency,
+) -> dict[str, str | None]:
+    """Return non-secret setup progress while the CLI waits for browser completion."""
+
+    flow = service.get_cli_configuration(flow_id)
+    if flow is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "lark_configuration_expired", "message": "飞书 CLI 配置流程已过期。"},
+        )
+    return {
+        "flow_id": flow.flow_id,
+        "status": flow.status,
+        "verification_url": flow.verification_url,
     }
 
 
@@ -64,10 +128,7 @@ def get_lark_setup_qrcode(
     if path is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "lark_setup_expired",
-                "message": "The authorization QR code has expired.",
-            },
+            detail={"code": "lark_setup_expired", "message": "飞书二维码已过期，请重新开始。"},
         )
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-store"})
 
@@ -85,7 +146,10 @@ def complete_lark_setup(
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "lark_setup_incomplete", "message": str(exc)},
+            detail={
+                "code": "lark_setup_incomplete",
+                "message": "尚未检测到已完成的飞书用户授权。请在二维码页面完成授权后重试。",
+            },
         ) from exc
     return {"availability": result.availability, "next_step": result.next_step}
 

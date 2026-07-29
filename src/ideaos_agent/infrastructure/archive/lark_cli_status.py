@@ -13,6 +13,7 @@ from typing import Literal
 LarkCliAvailability = Literal[
     "cli_missing",
     "cli_unresponsive",
+    "cli_unconfigured",
     "unauthenticated",
     "authenticated_unverified",
     "identity_mismatch",
@@ -63,6 +64,10 @@ class LarkCliStatusAdapter:
             if version is None:
                 return self._unresponsive_status()
 
+            configuration = self._run([command_path, "config", "show"])
+            if configuration.returncode != 0:
+                return self._unconfigured_status(version)
+
             completed = self._run([command_path, "auth", "status", "--json", "--verify"])
         except (OSError, subprocess.TimeoutExpired):
             return self._unresponsive_status()
@@ -108,6 +113,15 @@ class LarkCliStatusAdapter:
             next_step="retry_cli_check",
         )
 
+    @staticmethod
+    def _unconfigured_status(version: str) -> LarkCliStatus:
+        return LarkCliStatus(
+            availability="cli_unconfigured",
+            identity="unknown",
+            version=version,
+            next_step="initialize_cli",
+        )
+
     def check_update(self) -> bool:
         """Return whether CLI reports an update without performing any update."""
 
@@ -151,6 +165,23 @@ class LarkCliStatusAdapter:
         if not isinstance(device_code, str) or not device_code:
             raise RuntimeError("Feishu authorization did not return a device code.")
         return LarkAuthorizationStart(verification_url=verification_url, device_code=device_code)
+
+    def start_cli_configuration(self) -> subprocess.Popen[str]:
+        """Start the blocking local CLI application setup without exposing its output."""
+
+        command_path = self._require_command()
+        try:
+            return subprocess.Popen(
+                [command_path, "config", "init", "--new", "--lang", "zh_cn"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=None,
+                encoding="utf-8",
+                env=self._command_environment(),
+                text=True,
+            )
+        except OSError as exc:
+            raise RuntimeError("Unable to start Feishu CLI configuration.") from exc
 
     def render_qrcode(
         self,
@@ -232,9 +263,17 @@ class LarkCliStatusAdapter:
     def _identity_is_ready(value: object) -> bool:
         return (
             isinstance(value, dict)
-            and value.get("status") == "ready"
+            and value.get("status") in {"ready", "needs_refresh"}
             and value.get("verified") is not False
         )
+
+    @staticmethod
+    def _command_environment() -> dict[str, str]:
+        return {
+            **os.environ,
+            "LARKSUITE_CLI_NO_UPDATE_NOTIFIER": "1",
+            "LARKSUITE_CLI_NO_SKILLS_NOTIFIER": "1",
+        }
 
     @staticmethod
     def _normalize_identity(value: object) -> Literal["user", "bot", "unknown"]:
@@ -256,11 +295,7 @@ class LarkCliStatusAdapter:
             check=False,
             cwd=cwd,
             encoding="utf-8",
-            env={
-                **os.environ,
-                "LARKSUITE_CLI_NO_UPDATE_NOTIFIER": "1",
-                "LARKSUITE_CLI_NO_SKILLS_NOTIFIER": "1",
-            },
+            env=self._command_environment(),
             text=True,
             timeout=self._timeout_seconds,
         )

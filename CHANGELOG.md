@@ -12,18 +12,18 @@
 
 ### 新增
 
-- 新增仅限本机开发环境的运行设置面板，可独立选择 Fake / Real LLM 与 Fake / Real 飞书归档；不存在 `.env` 时按双 Fake 模板创建，并且只更新非 Secret 的模式开关。
-- 新增真实 LLM 配置缺失项与飞书 CLI 可用性、目标身份的脱敏状态；配置为 `user` 身份时，可在页面发起短时二维码授权并重新检测。API Key、Token、device code 和原始 CLI 输出不会被 ThinkOR 返回或持久化。
+- 新增本机运行设置：可分别选择 Fake / Real LLM 与 Fake / Real 飞书归档；缺少 `.env` 时按双 Fake 模板创建，且页面只更新非 Secret 的模式开关。
+- 新增真实能力状态与首次飞书 CLI 引导：页面可显示脱敏的配置缺失项、CLI/身份状态，并协助完成 CLI 应用配置、二维码 user 授权和重新检测。
 
 ### 修复
 
-- Fake Archive 现明确标记为模拟归档，不再生成或展示虚拟飞书链接；启动时会清理旧版本写入的固定占位链接，前端仅为受信任的 HTTPS 飞书/Lark 域名提供打开文档入口。
-- 修复通过 `pip install .` 启动时将本地 `.env` 错误定位到 Python `site-packages` 的问题；运行设置写入失败时改为返回可读的 JSON 错误，页面不再显示 JSON 解析异常。
-- 修复已有 `.env` 时仍要求 `.env.example` 才能切换运行模式的问题；配置文件锁、目录写入权限或无效数值配置会以安全的本地设置错误返回，不会产生未处理的 500 错误。
+- Fake Archive 现明确标记为模拟归档，不再生成虚拟飞书链接；旧的固定占位链接会在启动时清理，页面仅打开受信任的 HTTPS 飞书/Lark 链接。
+- 修复运行设置在 `.env` 已保存后被能力探测异常误报为失败的问题，并覆盖 `pip install .` 的本机 `.env` 定位、已有 `.env` 切换模式和安全错误响应。
+- 修复飞书 CLI 对已验证 `needs_refresh` user 身份的误判，且未完成 CLI 应用配置时不再直接发起授权。
 
 ### 安全
 
-- 限制本地配置写入与飞书授权路由仅可由开发环境 loopback 地址上的同源页面携带 CSRF Token 调用；系统环境变量继续优先于 `.env`，页面会提示有效配置被覆盖。
+- 本地配置写入与飞书授权仅允许 loopback 同源页面携带 CSRF Token 调用；API Key、Token、App Secret、device code 和原始 CLI 输出不被 ThinkOR 返回或持久化。
 
 ## [0.6.0] - 2026-07-27
 

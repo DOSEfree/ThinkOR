@@ -618,6 +618,7 @@ class RuntimeCapabilitiesResponse(BaseModel):
     archive_state: str
     lark: LarkCapabilityResponse | None = None
     process_environment_overrides: list[str] = Field(default_factory=list)
+    capabilities_checked: bool = True
 
 
 class LocalConfigApplyResponse(RuntimeCapabilitiesResponse):

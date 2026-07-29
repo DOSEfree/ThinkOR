@@ -3,8 +3,9 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
+from ideaos_agent.api import runtime_capabilities
 from ideaos_agent.api.runtime_capabilities import apply_local_config
-from ideaos_agent.application.local_config_service import LocalConfigService
+from ideaos_agent.application.local_config_service import LocalConfigApplyResult, LocalConfigService
 from ideaos_agent.config import get_settings
 from ideaos_agent.domain.runtime import RuntimeModeSelection, RuntimeModeSelectionError
 from ideaos_agent.infrastructure.config.dotenv_store import DotenvModeStore, DotenvStoreError
@@ -190,3 +191,34 @@ def test_apply_local_config_returns_json_error_for_invalid_existing_settings() -
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail["code"] == "local_config_invalid"
+
+
+def test_apply_local_config_keeps_success_when_capability_probe_fails(monkeypatch) -> None:
+    class SuccessfulLocalConfigService:
+        def apply_runtime_modes(self, _selection: RuntimeModeSelection) -> LocalConfigApplyResult:
+            return LocalConfigApplyResult(
+                created_from_template=False,
+                effective_use_fake_llm=False,
+                effective_use_fake_archive=False,
+                process_environment_overrides=(),
+            )
+
+    def fail_capability_probe() -> object:
+        raise RuntimeError("CLI probe failed")
+
+    monkeypatch.setattr(
+        runtime_capabilities,
+        "get_runtime_capability_service",
+        fail_capability_probe,
+    )
+
+    response = apply_local_config(
+        RuntimeModeInput(use_fake_llm=False, use_fake_archive=False),
+        None,
+        SuccessfulLocalConfigService(),
+    )
+
+    assert response.use_fake_llm is False
+    assert response.use_fake_archive is False
+    assert response.capabilities_checked is False
+    assert response.lark is None

@@ -37,6 +37,17 @@ const resultPlaceholder = document.getElementById("result-placeholder");
 const resultError = document.getElementById("result-error");
 const resultContent = document.getElementById("result-content");
 const appTooltip = document.getElementById("app-tooltip");
+const profileOpenButton = document.getElementById("profile-open");
+const profileDialog = document.getElementById("profile-dialog");
+const profileForm = document.getElementById("profile-form");
+const profileCloseButton = document.getElementById("profile-close");
+const profileName = document.getElementById("profile-name");
+const profileNameInput = document.getElementById("profile-name-input");
+const profileAvatar = document.getElementById("profile-avatar");
+const profileAvatarPreview = document.getElementById("profile-avatar-preview");
+const profileAvatarInput = document.getElementById("profile-avatar-input");
+const profileAvatarResetButton = document.getElementById("profile-avatar-reset");
+const profileDialogStatus = document.getElementById("profile-dialog-status");
 const runtimeSettingsOpenButton = document.getElementById("runtime-settings-open");
 const runtimeSettingsDialog = document.getElementById("runtime-settings-dialog");
 const runtimeSettingsCloseButton = document.getElementById("runtime-settings-close");
@@ -49,7 +60,14 @@ const runtimeFakeArchiveAckInput = document.getElementById("runtime-fake-archive
 const runtimeLarkGuide = document.getElementById("runtime-lark-guide");
 const runtimeLarkGuideCopy = document.getElementById("runtime-lark-guide-copy");
 const runtimeLarkRecheckButton = document.getElementById("runtime-lark-recheck");
+const runtimeLarkInstallCommand = document.getElementById("runtime-lark-install-command");
+const runtimeLarkConfigureButton = document.getElementById("runtime-lark-configure");
 const runtimeLarkAuthorizeButton = document.getElementById("runtime-lark-authorize");
+const runtimeLarkConfiguration = document.getElementById("runtime-lark-configuration");
+const runtimeLarkConfigurationStatus = document.getElementById("runtime-lark-configuration-status");
+const runtimeLarkConfigurationQrcode = document.getElementById("runtime-lark-configuration-qrcode");
+const runtimeLarkConfigurationLink = document.getElementById("runtime-lark-configuration-link");
+const runtimeLarkConfigurationCompleteButton = document.getElementById("runtime-lark-configuration-complete");
 const runtimeLarkAuthorization = document.getElementById("runtime-lark-authorization");
 const runtimeLarkQrcode = document.getElementById("runtime-lark-qrcode");
 const runtimeLarkVerificationLink = document.getElementById("runtime-lark-verification-link");
@@ -74,6 +92,13 @@ let archiveRetrySessionId = null;
 let failedRequestRetry = null;
 let pendingDeleteAction = null;
 let activeLarkSetupFlowId = null;
+let activeLarkConfigurationFlowId = null;
+let larkConfigurationPollTimerId = null;
+let pendingProfileAvatar = null;
+
+const PROFILE_STORAGE_KEY = "thinkor.local-profile.v1";
+const DEFAULT_PROFILE_NAME = "LOCAL WORKSPACE";
+const DEFAULT_PROFILE_AVATAR = "/static/assets/logo/user.png";
 
 const expandedHistoryRootIds = new Set();
 const historyThreadCache = new Map();
@@ -142,7 +167,7 @@ form.addEventListener("submit", async (event) => {
   }
   const content = textarea.value.trim();
   if (!content) {
-    renderError("请输入一段原始想法后再提交。");
+    renderError("请输入一段想法后再提交。");
     return;
   }
 
@@ -161,6 +186,7 @@ resetButton.addEventListener("click", () => {
   textarea.focus();
 });
 
+initializeProfile();
 initializeUi();
 void initializeHistory();
 
@@ -191,6 +217,51 @@ if (runtimeLarkRecheckButton instanceof HTMLButtonElement) {
 if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
   runtimeLarkAuthorizeButton.addEventListener("click", () => {
     void startLarkAuthorization();
+  });
+}
+
+if (runtimeLarkConfigureButton instanceof HTMLButtonElement) {
+  runtimeLarkConfigureButton.addEventListener("click", () => {
+    void startLarkConfiguration();
+  });
+}
+
+if (runtimeLarkConfigurationCompleteButton instanceof HTMLButtonElement) {
+  runtimeLarkConfigurationCompleteButton.addEventListener("click", () => {
+    activeLarkConfigurationFlowId = null;
+    clearLarkConfigurationPoll();
+    if (runtimeLarkConfiguration instanceof HTMLElement) {
+      runtimeLarkConfiguration.classList.add("hidden");
+    }
+    void loadRuntimeCapabilities();
+  });
+}
+
+if (profileOpenButton instanceof HTMLButtonElement) {
+  profileOpenButton.addEventListener("click", openProfileDialog);
+}
+
+if (profileCloseButton instanceof HTMLButtonElement) {
+  profileCloseButton.addEventListener("click", closeProfileDialog);
+}
+
+if (profileForm instanceof HTMLFormElement) {
+  profileForm.addEventListener("submit", saveProfile);
+}
+
+if (profileAvatarInput instanceof HTMLInputElement) {
+  profileAvatarInput.addEventListener("change", () => {
+    void previewProfileAvatar();
+  });
+}
+
+if (profileAvatarResetButton instanceof HTMLButtonElement) {
+  profileAvatarResetButton.addEventListener("click", () => {
+    pendingProfileAvatar = null;
+    if (profileAvatarPreview instanceof HTMLImageElement) {
+      profileAvatarPreview.src = DEFAULT_PROFILE_AVATAR;
+    }
+    setProfileDialogStatus("将恢复默认头像，确认保存后生效。");
   });
 }
 
@@ -236,6 +307,125 @@ if (deleteConfirmSubmitButton instanceof HTMLButtonElement) {
       void deleteAction();
     }
   });
+}
+
+function initializeProfile() {
+  const profile = loadStoredProfile();
+  applyProfile(profile);
+}
+
+function loadStoredProfile() {
+  try {
+    const rawProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!rawProfile) {
+      return {name: DEFAULT_PROFILE_NAME, avatar: null};
+    }
+    const profile = JSON.parse(rawProfile);
+    return {
+      name: normalizeProfileName(profile?.name),
+      avatar: typeof profile?.avatar === "string" && profile.avatar.startsWith("data:image/")
+        ? profile.avatar
+        : null,
+    };
+  } catch (_error) {
+    return {name: DEFAULT_PROFILE_NAME, avatar: null};
+  }
+}
+
+function normalizeProfileName(value) {
+  const normalized = String(value || "").trim().replace(/\s+/g, " ");
+  return normalized.slice(0, 32) || DEFAULT_PROFILE_NAME;
+}
+
+function applyProfile(profile) {
+  const name = normalizeProfileName(profile?.name);
+  const avatar = profile?.avatar || DEFAULT_PROFILE_AVATAR;
+  if (profileName instanceof HTMLElement) {
+    profileName.textContent = name;
+  }
+  if (profileAvatar instanceof HTMLImageElement) {
+    profileAvatar.src = avatar;
+  }
+}
+
+function openProfileDialog() {
+  if (!(profileDialog instanceof HTMLElement)) {
+    return;
+  }
+  const profile = loadStoredProfile();
+  pendingProfileAvatar = profile.avatar;
+  if (profileNameInput instanceof HTMLInputElement) {
+    profileNameInput.value = profile.name;
+  }
+  if (profileAvatarPreview instanceof HTMLImageElement) {
+    profileAvatarPreview.src = profile.avatar || DEFAULT_PROFILE_AVATAR;
+  }
+  if (profileAvatarInput instanceof HTMLInputElement) {
+    profileAvatarInput.value = "";
+  }
+  setProfileDialogStatus("名称和头像仅保存在当前浏览器。");
+  profileDialog.classList.remove("hidden");
+  profileNameInput?.focus();
+}
+
+function closeProfileDialog() {
+  if (profileDialog instanceof HTMLElement) {
+    profileDialog.classList.add("hidden");
+  }
+}
+
+async function previewProfileAvatar() {
+  if (!(profileAvatarInput instanceof HTMLInputElement)) {
+    return;
+  }
+  const file = profileAvatarInput.files?.[0];
+  if (!file) {
+    return;
+  }
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 1024 * 1024) {
+    profileAvatarInput.value = "";
+    setProfileDialogStatus("请选择不超过 1 MB 的 PNG、JPG 或 WebP 图片。");
+    return;
+  }
+  try {
+    pendingProfileAvatar = await readFileAsDataUrl(file);
+    if (profileAvatarPreview instanceof HTMLImageElement) {
+      profileAvatarPreview.src = pendingProfileAvatar;
+    }
+    setProfileDialogStatus("新头像已预览，保存资料后生效。");
+  } catch (_error) {
+    setProfileDialogStatus("无法读取这张图片，请更换后重试。");
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")), {once: true});
+    reader.addEventListener("error", () => reject(reader.error), {once: true});
+    reader.readAsDataURL(file);
+  });
+}
+
+function saveProfile(event) {
+  event.preventDefault();
+  const profile = {
+    name: normalizeProfileName(profileNameInput instanceof HTMLInputElement ? profileNameInput.value : ""),
+    avatar: pendingProfileAvatar,
+  };
+  try {
+    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    applyProfile(profile);
+    closeProfileDialog();
+  } catch (_error) {
+    setProfileDialogStatus("无法保存到当前浏览器，请缩小图片后重试。");
+  }
+}
+
+function setProfileDialogStatus(message) {
+  if (profileDialogStatus instanceof HTMLElement) {
+    profileDialogStatus.textContent = message;
+  }
 }
 
 async function openRuntimeSettings() {
@@ -285,8 +475,8 @@ function renderRuntimeCapabilities(payload) {
     runtimeLlmHint.textContent = fakeLlm
       ? "当前正在使用模拟 LLM。"
       : missingItems.length
-        ? `真实 LLM 还需要在本机 .env 中填写：${missingItems.join(", ")}。此处不会显示密钥。`
-        : "真实 LLM 已配置，系统不会自动发起调用测试。";
+        ? `真实 LLM 需要您自己在本机 .env 中填写：${missingItems.join(", ")}，以保证密钥安全。`
+        : "真实 LLM 已配置，您可以尝试体验ThinkOR了。";
   }
   if (runtimeArchiveHint instanceof HTMLElement) {
     runtimeArchiveHint.textContent = fakeArchive
@@ -310,15 +500,133 @@ function renderLarkGuide(lark) {
   }
   runtimeLarkGuide.classList.remove("hidden");
   const messages = {
-    cli_missing: "本机未检测到 lark-cli。请先安装，再点击“重新检测飞书”。ThinkOR 不会代为执行全局安装。",
+    cli_missing: "本机尚未检测到 lark-cli。请在本机终端执行下列安装命令，安装完成后返回此处重新检测。",
     cli_unresponsive: "lark-cli 没有正常响应。请检查本机命令配置后重新检测。",
-    unauthenticated: "所选身份尚未授权。请完成本机 CLI 配置及用户授权。",
-    identity_mismatch: "当前 CLI 身份与 IDEAOS_FEISHU_ARCHIVE_AS 不一致。请更新本机配置后。",
-    authenticated_unverified: "已确认CLI 授权可用，请开始使用ThinkOR吧。",
+    cli_unconfigured: "已检测到飞书 CLI，但尚未完成本机应用配置。点击下方按钮后，可在本页继续完成二维码配置。",
+    unauthenticated: "飞书 CLI 应用已配置，但所选用户尚未授权。点击下方按钮生成一次性授权二维码。",
+    identity_mismatch: "当前 CLI 已授权的身份与 IDEAOS_FEISHU_ARCHIVE_AS 不一致。请更新本机配置后重新检测。",
+    authenticated_unverified: "已确认当前飞书用户授权可用，您可以实际使用确认飞书归档效果了。",
   };
   runtimeLarkGuideCopy.textContent = messages[lark.availability] || "请重新检测飞书 CLI 状态。";
+  if (runtimeLarkInstallCommand instanceof HTMLElement) {
+    runtimeLarkInstallCommand.classList.toggle("hidden", lark.availability !== "cli_missing");
+  }
+  if (runtimeLarkConfigureButton instanceof HTMLButtonElement) {
+    runtimeLarkConfigureButton.classList.toggle("hidden", lark.availability !== "cli_unconfigured");
+  }
   if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
     runtimeLarkAuthorizeButton.classList.toggle("hidden", lark.availability !== "unauthenticated");
+  }
+}
+
+function clearLarkConfigurationPoll() {
+  if (larkConfigurationPollTimerId !== null) {
+    window.clearTimeout(larkConfigurationPollTimerId);
+    larkConfigurationPollTimerId = null;
+  }
+}
+
+function setLarkExternalLink(link, verificationUrl) {
+  if (!(link instanceof HTMLAnchorElement)) {
+    return;
+  }
+  try {
+    const url = new URL(String(verificationUrl || ""));
+    if (url.protocol !== "https:" || url.username || url.password) {
+      throw new TypeError("unsafe URL");
+    }
+    link.href = url.href;
+    link.classList.remove("hidden");
+  } catch (_error) {
+    link.removeAttribute("href");
+    link.classList.add("hidden");
+  }
+}
+
+async function loadLarkQrCode(flowId, image) {
+  if (!(image instanceof HTMLImageElement) || image.dataset.flowId === flowId) {
+    return;
+  }
+  const response = await fetch(
+    `/api/v1/lark/setup/${encodeURIComponent(flowId)}/qrcode`,
+    {headers: {"X-ThinkOR-CSRF-Token": csrfToken}},
+  );
+  if (!response.ok) {
+    throw new Error("无法加载飞书二维码，请重新开始此步骤。");
+  }
+  image.src = URL.createObjectURL(await response.blob());
+  image.dataset.flowId = flowId;
+}
+
+async function startLarkConfiguration() {
+  if (!(runtimeSettingsStatus instanceof HTMLElement)) {
+    return;
+  }
+  clearLarkConfigurationPoll();
+  runtimeSettingsStatus.textContent = "正在启动飞书 CLI 应用配置...";
+  try {
+    const response = await fetch("/api/v1/lark/setup/configuration/start", {
+      method: "POST",
+      headers: {"X-ThinkOR-CSRF-Token": csrfToken},
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || typeof payload.flow_id !== "string") {
+      throw new Error(payload?.detail?.message || "无法启动飞书 CLI 应用配置，请重新检测后重试。");
+    }
+    activeLarkConfigurationFlowId = payload.flow_id;
+    if (runtimeLarkConfiguration instanceof HTMLElement) {
+      runtimeLarkConfiguration.classList.remove("hidden");
+    }
+    if (runtimeLarkConfigurationStatus instanceof HTMLElement) {
+      runtimeLarkConfigurationStatus.textContent = "正在准备浏览器配置页面...";
+    }
+    void pollLarkConfiguration();
+  } catch (error) {
+    runtimeSettingsStatus.textContent = error instanceof Error
+      ? error.message
+      : "无法启动飞书 CLI 应用配置，请重新检测后重试。";
+  }
+}
+
+async function pollLarkConfiguration() {
+  const flowId = activeLarkConfigurationFlowId;
+  if (!flowId || !(runtimeLarkConfigurationStatus instanceof HTMLElement)) {
+    return;
+  }
+  try {
+    const response = await fetch(
+      `/api/v1/lark/setup/configuration/${encodeURIComponent(flowId)}`,
+      {headers: {"X-ThinkOR-CSRF-Token": csrfToken}},
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.detail?.message || "飞书 CLI 配置流程已失效，请重新开始。");
+    }
+    if (payload.status === "awaiting_browser" && typeof payload.verification_url === "string") {
+      runtimeLarkConfigurationStatus.textContent = "请扫描二维码，或在新窗口中打开配置页面。完成后返回此处重新检测。";
+      await loadLarkQrCode(flowId, runtimeLarkConfigurationQrcode);
+      setLarkExternalLink(runtimeLarkConfigurationLink, payload.verification_url);
+    } else if (payload.status === "completed") {
+      clearLarkConfigurationPoll();
+      activeLarkConfigurationFlowId = null;
+      runtimeLarkConfigurationStatus.textContent = "飞书 CLI 应用配置已完成，正在重新检测...";
+      await loadRuntimeCapabilities();
+      return;
+    } else if (payload.status === "failed") {
+      clearLarkConfigurationPoll();
+      runtimeLarkConfigurationStatus.textContent = "飞书 CLI 应用配置未完成。请重新开始此步骤，或检查浏览器中的配置页面。";
+      return;
+    } else {
+      runtimeLarkConfigurationStatus.textContent = "正在等待飞书 CLI 准备配置页面...";
+    }
+    larkConfigurationPollTimerId = window.setTimeout(() => {
+      void pollLarkConfiguration();
+    }, 1000);
+  } catch (error) {
+    clearLarkConfigurationPoll();
+    runtimeLarkConfigurationStatus.textContent = error instanceof Error
+      ? error.message
+      : "无法检查飞书 CLI 配置进度，请重试。";
   }
 }
 
@@ -332,24 +640,13 @@ async function startLarkAuthorization() {
       method: "POST",
       headers: {"X-ThinkOR-CSRF-Token": csrfToken},
     });
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload?.detail?.message || "无法发起飞书授权。");
     }
     activeLarkSetupFlowId = payload.flow_id;
-    if (runtimeLarkQrcode instanceof HTMLImageElement) {
-      const qrResponse = await fetch(
-        `/api/v1/lark/setup/${encodeURIComponent(payload.flow_id)}/qrcode`,
-        {headers: {"X-ThinkOR-CSRF-Token": csrfToken}},
-      );
-      if (!qrResponse.ok) {
-        throw new Error("无法加载飞书授权二维码。");
-      }
-      runtimeLarkQrcode.src = URL.createObjectURL(await qrResponse.blob());
-    }
-    if (runtimeLarkVerificationLink instanceof HTMLAnchorElement) {
-      runtimeLarkVerificationLink.href = payload.verification_url;
-    }
+    await loadLarkQrCode(payload.flow_id, runtimeLarkQrcode);
+    setLarkExternalLink(runtimeLarkVerificationLink, payload.verification_url);
     if (runtimeLarkAuthorization instanceof HTMLElement) {
       runtimeLarkAuthorization.classList.remove("hidden");
     }
@@ -369,7 +666,7 @@ async function completeLarkAuthorization() {
       method: "POST",
       headers: {"X-ThinkOR-CSRF-Token": csrfToken},
     });
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload?.detail?.message || "飞书授权未完成。");
     }
@@ -390,6 +687,7 @@ function formatArchiveState(state) {
     unconfigured: "未配置",
     cli_missing: "未安装 CLI",
     cli_unresponsive: "CLI 不可用",
+    cli_unconfigured: "等待完成 CLI 应用配置",
     unauthenticated: "未授权",
     identity_mismatch: "身份不匹配",
     authenticated_unverified: "已授权，请直接开始使用",
@@ -439,7 +737,10 @@ async function applyRuntimeSettings() {
       const overrideNote = Array.isArray(payload.process_environment_overrides) && payload.process_environment_overrides.length
         ? ` 已保存至 .env，但当前进程环境变量仍会覆盖：${payload.process_environment_overrides.join(", ")}。`
         : " 已保存并应用于后续请求。";
-      runtimeSettingsStatus.textContent += overrideNote;
+      const capabilityNote = payload.capabilities_checked === false
+        ? " 当前状态暂无法检测，可点击“重新检测飞书”稍后刷新。"
+        : "";
+      runtimeSettingsStatus.textContent += overrideNote + capabilityNote;
     }
   } catch (error) {
     if (runtimeSettingsStatus instanceof HTMLElement) {
@@ -700,7 +1001,7 @@ async function handleClarificationRerun(triggerButton) {
     const input = card.querySelector("[data-question-input]");
     const answer = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
     if (!answer) {
-      renderError("请先回答全部澄清问题，再重新分析。");
+      renderError("请先回答完全部澄清问题噢。");
       return;
     }
     clarifications.push({ question, answer });
@@ -713,7 +1014,7 @@ async function handleClarificationRerun(triggerButton) {
 
   await submitIdea(
     { content, clarifications, session_id: currentSessionId },
-    "补充并重新分析 / RE-RUN",
+    "补充并继续生成 / CONTINUE",
     triggerButton,
   );
 }
@@ -727,7 +1028,7 @@ async function handleFollowUpRefine(triggerButton) {
   const input = resultContent.querySelector("[data-follow-up-input]");
   const question = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
   if (!question) {
-    renderError("请输入你想继续完善的问题。");
+    renderError("请输入您想继续完善的问题。");
     return;
   }
 
@@ -776,7 +1077,7 @@ async function handleFollowUpClarificationRerun(triggerButton) {
       question: currentView.followUpQuestion,
       clarifications,
     },
-    "补充并继续完善 / RE-RUN",
+    "补充并继续完善 / CONTINUE",
     triggerButton,
   );
 }
@@ -1154,7 +1455,7 @@ function renderHistorySessionList(items, query = currentHistorySearchQuery) {
   if (!Array.isArray(items) || !items.length) {
     historySessionList.innerHTML = normalizeHistorySearchQuery(query)
       ? "<p class=\"history-empty\">未找到匹配的历史想法。 / No matching ideas found.</p>"
-      : "<p class=\"history-empty\">还没有已完成的本地想法。完成一次分析后，它会出现在这里。</p>";
+      : "<p class=\"history-empty\">请开始进行ThinkOR的第一次分析，想法归档会出现在这里。</p>";
     return;
   }
 
@@ -1721,7 +2022,7 @@ function renderClarificationView(payload, rawContent) {
       <div class="questions-grid">${questions}</div>
       <div class="result-actions">
         <button class="question-submit" type="button" data-action="rerun-analysis" data-content="${escapeHtml(rawContent)}">
-          补充并重新分析 / RE-RUN
+          补充并继续生成 / CONTINUE
         </button>
         <button class="secondary-button" type="button" data-action="reset">重新开始 / RESET</button>
       </div>
@@ -1867,7 +2168,7 @@ function renderFollowUpClarificationView(payload, followUpQuestion) {
       <div class="questions-grid">${questions}</div>
       <div class="result-actions">
         <button class="question-submit" type="button" data-action="rerun-follow-up">
-          补充并继续完善 / RE-RUN
+          补充并继续完善 / CONTINUE
         </button>
         <button class="secondary-button" type="button" data-action="reset">重新开始 / RESET</button>
       </div>
@@ -2937,8 +3238,8 @@ function formatWorkspaceBusyMessage(label) {
   if (normalizedLabel.includes("REFINE")) {
     return {primary: "正在完善方案", secondary: "Refining this version"};
   }
-  if (normalizedLabel.includes("RE-RUN")) {
-    return {primary: "正在重新分析", secondary: "Re-running the analysis"};
+  if (normalizedLabel.includes("CONTINUE")) {
+    return {primary: "正在继续生成", secondary: "Continuing generation"};
   }
   if (normalizedLabel.includes("RETRY")) {
     return {primary: "正在重试飞书归档", secondary: "Retrying Feishu archive"};
