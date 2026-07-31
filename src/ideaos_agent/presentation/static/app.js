@@ -60,14 +60,8 @@ const runtimeFakeArchiveAckInput = document.getElementById("runtime-fake-archive
 const runtimeLarkGuide = document.getElementById("runtime-lark-guide");
 const runtimeLarkGuideCopy = document.getElementById("runtime-lark-guide-copy");
 const runtimeLarkRecheckButton = document.getElementById("runtime-lark-recheck");
-const runtimeLarkInstallCommand = document.getElementById("runtime-lark-install-command");
-const runtimeLarkConfigureButton = document.getElementById("runtime-lark-configure");
+const runtimeLarkCommand = document.getElementById("runtime-lark-command");
 const runtimeLarkAuthorizeButton = document.getElementById("runtime-lark-authorize");
-const runtimeLarkConfiguration = document.getElementById("runtime-lark-configuration");
-const runtimeLarkConfigurationStatus = document.getElementById("runtime-lark-configuration-status");
-const runtimeLarkConfigurationQrcode = document.getElementById("runtime-lark-configuration-qrcode");
-const runtimeLarkConfigurationLink = document.getElementById("runtime-lark-configuration-link");
-const runtimeLarkConfigurationCompleteButton = document.getElementById("runtime-lark-configuration-complete");
 const runtimeLarkAuthorization = document.getElementById("runtime-lark-authorization");
 const runtimeLarkQrcode = document.getElementById("runtime-lark-qrcode");
 const runtimeLarkVerificationLink = document.getElementById("runtime-lark-verification-link");
@@ -92,8 +86,6 @@ let archiveRetrySessionId = null;
 let failedRequestRetry = null;
 let pendingDeleteAction = null;
 let activeLarkSetupFlowId = null;
-let activeLarkConfigurationFlowId = null;
-let larkConfigurationPollTimerId = null;
 let pendingProfileAvatar = null;
 
 const PROFILE_STORAGE_KEY = "thinkor.local-profile.v1";
@@ -217,23 +209,6 @@ if (runtimeLarkRecheckButton instanceof HTMLButtonElement) {
 if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
   runtimeLarkAuthorizeButton.addEventListener("click", () => {
     void startLarkAuthorization();
-  });
-}
-
-if (runtimeLarkConfigureButton instanceof HTMLButtonElement) {
-  runtimeLarkConfigureButton.addEventListener("click", () => {
-    void startLarkConfiguration();
-  });
-}
-
-if (runtimeLarkConfigurationCompleteButton instanceof HTMLButtonElement) {
-  runtimeLarkConfigurationCompleteButton.addEventListener("click", () => {
-    activeLarkConfigurationFlowId = null;
-    clearLarkConfigurationPoll();
-    if (runtimeLarkConfiguration instanceof HTMLElement) {
-      runtimeLarkConfiguration.classList.add("hidden");
-    }
-    void loadRuntimeCapabilities();
   });
 }
 
@@ -502,27 +477,22 @@ function renderLarkGuide(lark) {
   const messages = {
     cli_missing: "本机尚未检测到 lark-cli。请在本机终端执行下列安装命令，安装完成后返回此处重新检测。",
     cli_unresponsive: "lark-cli 没有正常响应。请检查本机命令配置后重新检测。",
-    cli_unconfigured: "已检测到飞书 CLI，但尚未完成本机应用配置。点击下方按钮后，可在本页继续完成二维码配置。",
+    cli_unconfigured: "已检测到飞书 CLI，但尚未完成本机应用配置。请在本机 PowerShell 或 Terminal 中运行下方命令，并按 CLI 给出的浏览器链接或二维码提示完成配置；完成后返回此处重新检测。",
     unauthenticated: "飞书 CLI 应用已配置，但所选用户尚未授权。点击下方按钮生成一次性授权二维码。",
     identity_mismatch: "当前 CLI 已授权的身份与 IDEAOS_FEISHU_ARCHIVE_AS 不一致。请更新本机配置后重新检测。",
     authenticated_unverified: "已确认当前飞书用户授权可用，您可以实际使用确认飞书归档效果了。",
   };
   runtimeLarkGuideCopy.textContent = messages[lark.availability] || "请重新检测飞书 CLI 状态。";
-  if (runtimeLarkInstallCommand instanceof HTMLElement) {
-    runtimeLarkInstallCommand.classList.toggle("hidden", lark.availability !== "cli_missing");
-  }
-  if (runtimeLarkConfigureButton instanceof HTMLButtonElement) {
-    runtimeLarkConfigureButton.classList.toggle("hidden", lark.availability !== "cli_unconfigured");
+  if (runtimeLarkCommand instanceof HTMLElement) {
+    const isCliMissing = lark.availability === "cli_missing";
+    const isCliUnconfigured = lark.availability === "cli_unconfigured";
+    runtimeLarkCommand.textContent = isCliUnconfigured
+      ? "lark-cli config init --new"
+      : "npm install -g @larksuite/cli";
+    runtimeLarkCommand.classList.toggle("hidden", !isCliMissing && !isCliUnconfigured);
   }
   if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
     runtimeLarkAuthorizeButton.classList.toggle("hidden", lark.availability !== "unauthenticated");
-  }
-}
-
-function clearLarkConfigurationPoll() {
-  if (larkConfigurationPollTimerId !== null) {
-    window.clearTimeout(larkConfigurationPollTimerId);
-    larkConfigurationPollTimerId = null;
   }
 }
 
@@ -556,78 +526,6 @@ async function loadLarkQrCode(flowId, image) {
   }
   image.src = URL.createObjectURL(await response.blob());
   image.dataset.flowId = flowId;
-}
-
-async function startLarkConfiguration() {
-  if (!(runtimeSettingsStatus instanceof HTMLElement)) {
-    return;
-  }
-  clearLarkConfigurationPoll();
-  runtimeSettingsStatus.textContent = "正在启动飞书 CLI 应用配置...";
-  try {
-    const response = await fetch("/api/v1/lark/setup/configuration/start", {
-      method: "POST",
-      headers: {"X-ThinkOR-CSRF-Token": csrfToken},
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || typeof payload.flow_id !== "string") {
-      throw new Error(payload?.detail?.message || "无法启动飞书 CLI 应用配置，请重新检测后重试。");
-    }
-    activeLarkConfigurationFlowId = payload.flow_id;
-    if (runtimeLarkConfiguration instanceof HTMLElement) {
-      runtimeLarkConfiguration.classList.remove("hidden");
-    }
-    if (runtimeLarkConfigurationStatus instanceof HTMLElement) {
-      runtimeLarkConfigurationStatus.textContent = "正在准备浏览器配置页面...";
-    }
-    void pollLarkConfiguration();
-  } catch (error) {
-    runtimeSettingsStatus.textContent = error instanceof Error
-      ? error.message
-      : "无法启动飞书 CLI 应用配置，请重新检测后重试。";
-  }
-}
-
-async function pollLarkConfiguration() {
-  const flowId = activeLarkConfigurationFlowId;
-  if (!flowId || !(runtimeLarkConfigurationStatus instanceof HTMLElement)) {
-    return;
-  }
-  try {
-    const response = await fetch(
-      `/api/v1/lark/setup/configuration/${encodeURIComponent(flowId)}`,
-      {headers: {"X-ThinkOR-CSRF-Token": csrfToken}},
-    );
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.detail?.message || "飞书 CLI 配置流程已失效，请重新开始。");
-    }
-    if (payload.status === "awaiting_browser" && typeof payload.verification_url === "string") {
-      runtimeLarkConfigurationStatus.textContent = "请扫描二维码，或在新窗口中打开配置页面。完成后返回此处重新检测。";
-      await loadLarkQrCode(flowId, runtimeLarkConfigurationQrcode);
-      setLarkExternalLink(runtimeLarkConfigurationLink, payload.verification_url);
-    } else if (payload.status === "completed") {
-      clearLarkConfigurationPoll();
-      activeLarkConfigurationFlowId = null;
-      runtimeLarkConfigurationStatus.textContent = "飞书 CLI 应用配置已完成，正在重新检测...";
-      await loadRuntimeCapabilities();
-      return;
-    } else if (payload.status === "failed") {
-      clearLarkConfigurationPoll();
-      runtimeLarkConfigurationStatus.textContent = "飞书 CLI 应用配置未完成。请重新开始此步骤，或检查浏览器中的配置页面。";
-      return;
-    } else {
-      runtimeLarkConfigurationStatus.textContent = "正在等待飞书 CLI 准备配置页面...";
-    }
-    larkConfigurationPollTimerId = window.setTimeout(() => {
-      void pollLarkConfiguration();
-    }, 1000);
-  } catch (error) {
-    clearLarkConfigurationPoll();
-    runtimeLarkConfigurationStatus.textContent = error instanceof Error
-      ? error.message
-      : "无法检查飞书 CLI 配置进度，请重试。";
-  }
 }
 
 async function startLarkAuthorization() {

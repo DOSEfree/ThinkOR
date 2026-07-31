@@ -2791,11 +2791,40 @@ body {
   width: min(640px, 100%);
   max-height: min(760px, calc(100vh - 40px));
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--panel-soft);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-card);
   background: var(--panel);
   color: var(--ink);
   padding: 24px;
+}
+
+.runtime-settings-card::-webkit-scrollbar {
+  width: 10px;
+}
+
+.runtime-settings-card::-webkit-scrollbar-track {
+  margin-block: 10px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.runtime-settings-card::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid var(--panel-soft);
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.runtime-settings-card::-webkit-scrollbar-thumb:hover,
+.runtime-settings-card:focus-within::-webkit-scrollbar-thumb {
+  background: var(--brand);
+}
+
+.runtime-settings-card:focus-within {
+  scrollbar-color: var(--brand) var(--panel-soft);
 }
 
 .runtime-settings-head,
@@ -3534,22 +3563,18 @@ body {
   opacity: 1;
 }
 
-.runtime-lark-configuration,
 .runtime-lark-authorization {
   display: grid;
   gap: 12px;
   justify-items: start;
 }
 
-.runtime-lark-configuration.hidden,
 .runtime-lark-authorization.hidden,
 #runtime-lark-authorize.hidden,
-#runtime-lark-configure.hidden,
-.runtime-lark-install-command.hidden {
+.runtime-lark-command.hidden {
   display: none;
 }
 
-.runtime-lark-configuration img,
 .runtime-lark-authorization img {
   width: min(220px, 100%);
   aspect-ratio: 1;
@@ -3557,7 +3582,6 @@ body {
   image-rendering: pixelated;
 }
 
-.runtime-lark-configuration a,
 .runtime-lark-authorization a {
   color: var(--brand);
   font-size: 0.86rem;

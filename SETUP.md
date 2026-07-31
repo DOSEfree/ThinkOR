@@ -81,12 +81,12 @@ npm install -g @larksuite/cli
 lark-cli --version
 ```
 
-首次使用 CLI 还需要完成飞书应用配置。ThinkOR 不会执行全局 npm 安装，但可以在本地页面协助完成后续 CLI 应用配置与 user 授权：
+首次使用 CLI 还需要完成飞书应用配置。ThinkOR 不会执行全局 npm 安装或 CLI 应用配置命令；页面只提供状态引导，并可在后续发起 user 授权：
 
 1. 在“运行设置”选择“真实归档”并保存，然后点击“重新检测飞书”。
 2. 显示“未安装 CLI”时，在本机终端执行上方安装命令，完成后回到页面重新检测。
-3. 显示“等待完成 CLI 应用配置”时，点击“开始配置飞书 CLI”。ThinkOR 会在本机启动固定的 `lark-cli config init --new --lang zh_cn` 命令，并只把 CLI 给出的配置链接转换为当前页面中的短时二维码和链接。
-4. 在飞书页面完成应用配置后，回到 ThinkOR 点击“我已完成配置，重新检测”。ThinkOR 不读取或保存 App Secret。
+3. 显示“等待完成 CLI 应用配置”时，在本机 PowerShell 或 Terminal 执行：`lark-cli config init --new`。按 CLI 给出的浏览器链接或二维码提示完成配置；不同 CLI 版本的展示形式可能不同。
+4. CLI 命令完成后，回到 ThinkOR 点击“重新检测飞书”。ThinkOR 不读取或保存 App Secret，也不转发 CLI 原始输出。
 5. 页面显示“未授权”时，点击“开始用户授权”，扫描短时二维码并在完成后点击“我已授权，检查状态”。device code 只在 ThinkOR 服务进程内存中短暂保存，完成或过期后立即清除。
 
 ### 2. 选择身份
@@ -120,7 +120,7 @@ IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS=30
 | 真实 LLM 缺少 `api_key` 或 `model` | `.env` 尚未完整配置 | 手动填写对应本机字段 |
 | 未安装 CLI | 找不到 `lark-cli` | 安装 CLI 后点击“重新检测飞书” |
 | CLI 不可用 | CLI 无响应或命令配置错误 | 检查 `IDEAOS_FEISHU_CLI_COMMAND` 与 CLI 本身 |
-| 等待完成 CLI 应用配置 | 已安装 CLI，但尚未创建/绑定本机应用配置 | 在页面点击“开始配置飞书 CLI”，完成二维码流程后重新检测 |
+| 等待完成 CLI 应用配置 | 已安装 CLI，但尚未创建/绑定本机应用配置 | 在本机终端运行 `lark-cli config init --new`，完成 CLI 流程后回页面重新检测 |
 | 未授权 | 目标身份尚未可用 | user 可从页面发起二维码授权；bot 到开发者后台处理权限 |
 | 身份不匹配 | 可用身份与 `IDEAOS_FEISHU_ARCHIVE_AS` 不一致 | 修改本机配置或完成目标身份配置 |
 | 已授权，待首次归档验证 | CLI 授权状态正常 | 使用测试目录完成一次真实归档 |
