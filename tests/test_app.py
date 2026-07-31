@@ -152,6 +152,9 @@ def test_app_styles_expose_thinkor_theme_and_interaction_hooks() -> None:
     assert ".completion-notice" in response.text
     assert ".app-tooltip" in response.text
     assert ".sidebar-history-panel .history-panel-body::-webkit-scrollbar-thumb" in response.text
+    assert ".runtime-settings-card::-webkit-scrollbar" in response.text
+    assert ".runtime-settings-card::-webkit-scrollbar-thumb" in response.text
+    assert ".runtime-settings-card:focus-within" in response.text
     history_scroll_gutter_hook = (
         ".sidebar-history-panel .history-panel-body {\n"
         "  padding: 4px 14px 12px 0;"
@@ -295,8 +298,9 @@ def test_app_serves_archive_aware_frontend_script() -> None:
     assert "模拟归档（未写入飞书）" in response.text
     assert 'fetch("/api/v1/local-config/apply"' in response.text
     assert "const payload = await response.json().catch(() => ({}));" in response.text
-    assert "function startLarkConfiguration()" in response.text
-    assert "/api/v1/lark/setup/configuration/start" in response.text
+    assert "lark-cli config init --new" in response.text
+    assert "function startLarkConfiguration()" not in response.text
+    assert "/api/v1/lark/setup/configuration/start" not in response.text
     assert "function initializeProfile()" in response.text
     assert '"补充并继续生成 / CONTINUE"' in response.text
     assert "删除这条想法线程" in response.text

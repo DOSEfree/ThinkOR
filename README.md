@@ -120,7 +120,7 @@ src/ideaos_agent/
 
 面板保存后的模式对后续请求立即生效。显式设置的系统环境变量优先于 `.env`；页面会提示此类覆盖，避免用户误以为保存未生效。真实 LLM 不会被系统自动调用测试，真实飞书的“已授权”也只代表 CLI 准备就绪，首次成功归档才是最终验证。完整配置、飞书身份边界与排障方式见 [SETUP.md](SETUP.md)。
 
-飞书首次使用时，页面会依次提示安装 CLI、配置本机 CLI 应用、完成用户授权和重新检测。ThinkOR 不会代为执行全局 npm 安装，也不会读取或保存 CLI 的 App Secret、Token、device code 或原始命令输出。右上角的个人资料按钮可修改本浏览器中的显示名称和头像，不会写入服务端、SQLite 或 `.env`。
+飞书首次使用时，页面会依次提示安装 CLI、在本机终端配置 CLI 应用、完成用户授权和重新检测。ThinkOR 不会代为执行全局 npm 安装或 `lark-cli config init --new`，也不会读取或保存 CLI 的 App Secret、Token、device code 或原始命令输出。右上角的个人资料按钮可修改本浏览器中的显示名称和头像，不会写入服务端、SQLite 或 `.env`。
 
 `.env.lock` 是 ThinkOR 在原子更新 `.env` 时保留的跨进程锁文件，不包含 Secret，已被 Git 忽略。服务运行期间不要手动删除它。
 
