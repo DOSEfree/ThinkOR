@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import tempfile
 import threading
 from collections.abc import Iterator
@@ -14,6 +15,11 @@ from pathlib import Path
 from dotenv import set_key
 
 from ideaos_agent.domain.runtime import RuntimeModeSelection
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 MODE_ENVIRONMENT_KEYS = (
     "IDEAOS_USE_FAKE_LLM",
@@ -47,9 +53,7 @@ def _exclusive_file_lock(lock_path: Path) -> Iterator[None]:
                 lock_file.write("0")
                 lock_file.flush()
 
-            if os.name == "nt":
-                import msvcrt
-
+            if sys.platform == "win32":
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
                 try:
@@ -58,13 +62,11 @@ def _exclusive_file_lock(lock_path: Path) -> Iterator[None]:
                     lock_file.seek(0)
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
-
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 try:
                     yield
                 finally:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
     except OSError as exc:
         raise DotenvStoreError("Unable to lock the local dotenv settings.") from exc
 
