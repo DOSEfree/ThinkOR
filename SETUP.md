@@ -62,7 +62,8 @@ IDEAOS_LLM_MODEL=your_model_name_here
 可选调优项：
 
 ```env
-IDEAOS_LLM_TIMEOUT_SECONDS=30
+# Some non-production LLM APIs respond slowly; 90 seconds avoids premature timeouts.
+IDEAOS_LLM_TIMEOUT_SECONDS=90
 IDEAOS_MAX_INPUT_CHARS=4000
 ```
 
@@ -87,7 +88,7 @@ lark-cli --version
 2. 显示“未安装 CLI”时，在本机终端执行上方安装命令，完成后回到页面重新检测。
 3. 显示“等待完成 CLI 应用配置”时，在本机 PowerShell 或 Terminal 执行：`lark-cli config init --new`。按 CLI 给出的浏览器链接或二维码提示完成配置；不同 CLI 版本的展示形式可能不同。
 4. CLI 命令完成后，回到 ThinkOR 点击“重新检测飞书”。ThinkOR 不读取或保存 App Secret，也不转发 CLI 原始输出。
-5. 页面显示“未授权”时，点击“开始用户授权”，扫描短时二维码并在完成后点击“我已授权，检查状态”。device code 只在 ThinkOR 服务进程内存中短暂保存，完成或过期后立即清除。
+5. 页面显示“未授权”且当前使用 `user` 时，点击“开始用户授权”，扫描短时二维码并在完成后点击“我已授权，检查状态”。device code 只在 ThinkOR 服务进程内存中短暂保存，完成或过期后立即清除。使用 `bot` 时不要执行 user 授权；应在飞书开发者后台检查 Bot 所需权限。
 
 ### 2. 选择身份
 
@@ -96,7 +97,7 @@ lark-cli --version
 ```env
 IDEAOS_USE_FAKE_ARCHIVE=false
 IDEAOS_FEISHU_CLI_COMMAND=lark-cli
-IDEAOS_FEISHU_ARCHIVE_AS=user
+IDEAOS_FEISHU_ARCHIVE_AS=bot
 IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN=
 IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS=30
 ```
@@ -104,7 +105,7 @@ IDEAOS_FEISHU_ARCHIVE_TIMEOUT_SECONDS=30
 `IDEAOS_FEISHU_ARCHIVE_AS` 的两种身份不能混用：
 
 - `user`：需要飞书应用已具备相应权限，用户再通过 CLI 授权。页面可检测状态，并在“未授权”时发起短时二维码授权；二维码和 device code 不会持久化。
-- `bot`：使用飞书应用身份。页面不会发起 user 授权；应在飞书开发者后台配置 App ID、App Secret 与所需 scopes。
+- `bot`：默认使用飞书应用身份。页面不会发起 user 授权；应在飞书开发者后台配置 App ID、App Secret 与所需 scopes。若身份状态已可用但实际归档失败，可在本机终端执行 `lark-cli docs +create --as bot --title "bot测试" --content "测试内容" --doc-format markdown 2>&1`。命令输出中出现 `console_url` 时，打开该网址补充 Bot 所需权限后再重试归档。
 
 运行设置会检查目标身份，而不是仅检查 CLI 是否安装。`已授权，待首次归档验证` 说明目标 CLI 身份有效，但不代表创建文档、父目录权限或网络一定成功。
 

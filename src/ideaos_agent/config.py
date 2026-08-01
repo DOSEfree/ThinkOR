@@ -65,7 +65,7 @@ class AppSettings:
     archive_db_path: str = "data/ideaos_agent.db"
     follow_up_draft_retention_days: int = 7
     feishu_cli_command: str = "lark-cli"
-    feishu_archive_as: str = "user"
+    feishu_archive_as: str = "bot"
     feishu_archive_parent_token: str = ""
     feishu_archive_timeout_seconds: float = 30.0
 
@@ -112,7 +112,7 @@ def get_settings() -> AppSettings:
             _get_setting_value("IDEAOS_FEISHU_CLI_COMMAND", dotenv_values_map) or "lark-cli"
         ),
         feishu_archive_as=(
-            _get_setting_value("IDEAOS_FEISHU_ARCHIVE_AS", dotenv_values_map) or "user"
+            _get_setting_value("IDEAOS_FEISHU_ARCHIVE_AS", dotenv_values_map) or "bot"
         ),
         feishu_archive_parent_token=(
             _get_setting_value("IDEAOS_FEISHU_ARCHIVE_PARENT_TOKEN", dotenv_values_map)

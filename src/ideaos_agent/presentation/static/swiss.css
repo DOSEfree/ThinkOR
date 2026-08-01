@@ -2983,10 +2983,13 @@ body {
 }
 
 .runtime-lark-guide code {
-  width: fit-content;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
   border: 1px solid var(--line);
   padding: 6px 8px;
   background: var(--workspace-bg);
+  white-space: nowrap;
 }
 
 .runtime-lark-authorization {
@@ -3130,21 +3133,68 @@ body {
   justify-content: center;
   gap: 8px;
   min-height: 40px;
-  padding: 9px 12px;
-  border: 1px solid rgba(255, 139, 130, 0.52);
-  border-radius: 9px;
-  background: rgba(255, 139, 130, 0.1);
-  color: #ffc2bd;
+  padding: 9px 14px;
+  border: 1px solid var(--brand);
+  border-radius: 5px;
+  background: var(--brand);
+  color: #090a0b;
   cursor: pointer;
-  font: inherit;
+  font-family: var(--font-strong);
   font-size: 0.82rem;
   font-weight: 700;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
 .archive-retry-button:hover {
-  border-color: #ff8b82;
-  background: rgba(255, 139, 130, 0.18);
-  color: #fff0ee;
+  border-color: #f0ff8c;
+  background: #f0ff8c;
+  transform: translateY(-1px);
+}
+
+.archive-retry-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.archive-retry-button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+  transform: none;
+}
+
+.archive-retry-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid var(--brand);
+  border-radius: 5px;
+  background: var(--brand);
+  color: #090a0b;
+  cursor: pointer;
+  font-family: var(--font-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.archive-retry-submit:hover {
+  border-color: #f0ff8c;
+  background: #f0ff8c;
+  transform: translateY(-1px);
+}
+
+.archive-retry-submit:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.archive-retry-submit:disabled {
+  cursor: wait;
+  opacity: 0.5;
+  transform: none;
 }
 
 .delete-confirm-button {

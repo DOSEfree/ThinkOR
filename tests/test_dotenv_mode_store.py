@@ -12,6 +12,22 @@ from ideaos_agent.infrastructure.config.dotenv_store import DotenvModeStore, Dot
 from ideaos_agent.models import RuntimeModeInput
 
 
+def test_public_template_defaults_are_copied_into_first_dotenv(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    template_path = project_root / ".env.example"
+    dotenv_path = tmp_path / ".env"
+    store = DotenvModeStore(dotenv_path=dotenv_path, template_path=template_path)
+
+    result = store.update_modes(
+        RuntimeModeSelection(use_fake_llm=True, use_fake_archive=True)
+    )
+
+    content = dotenv_path.read_text(encoding="utf-8")
+    assert result.created_from_template is True
+    assert "IDEAOS_LLM_TIMEOUT_SECONDS=90" in content
+    assert "IDEAOS_FEISHU_ARCHIVE_AS=bot" in content
+
+
 def test_update_creates_dotenv_from_template_and_only_changes_modes(tmp_path: Path) -> None:
     template_path = tmp_path / ".env.example"
     dotenv_path = tmp_path / ".env"

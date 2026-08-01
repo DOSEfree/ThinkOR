@@ -27,11 +27,13 @@ def test_settings_default_to_dual_fake_without_dotenv(
     monkeypatch.setattr(config, "ENV_FILE_PATH", tmp_path / ".env")
     monkeypatch.delenv("IDEAOS_USE_FAKE_LLM", raising=False)
     monkeypatch.delenv("IDEAOS_USE_FAKE_ARCHIVE", raising=False)
+    monkeypatch.delenv("IDEAOS_FEISHU_ARCHIVE_AS", raising=False)
 
     settings = config.get_settings()
 
     assert settings.use_fake_llm is True
     assert settings.use_fake_archive is True
+    assert settings.feishu_archive_as == "bot"
 
 
 def test_explicit_process_environment_overrides_dotenv_modes(

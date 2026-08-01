@@ -474,25 +474,39 @@ function renderLarkGuide(lark) {
     return;
   }
   runtimeLarkGuide.classList.remove("hidden");
+  const isBotIdentity = lark.identity === "bot" || lark.next_step === "configure_bot";
   const messages = {
     cli_missing: "本机尚未检测到 lark-cli。请在本机终端执行下列安装命令，安装完成后返回此处重新检测。",
     cli_unresponsive: "lark-cli 没有正常响应。请检查本机命令配置后重新检测。",
     cli_unconfigured: "已检测到飞书 CLI，但尚未完成本机应用配置。请在本机 PowerShell 或 Terminal 中运行下方命令，并按 CLI 给出的浏览器链接或二维码提示完成配置；完成后返回此处重新检测。",
-    unauthenticated: "飞书 CLI 应用已配置，但所选用户尚未授权。点击下方按钮生成一次性授权二维码。",
+    unauthenticated: isBotIdentity
+      ? "飞书 CLI 应用已配置，但 Bot 身份尚不可用。请在飞书开发者后台检查应用凭据和所需权限后重新检测。"
+      : "飞书 CLI 应用已配置，但所选用户尚未授权。点击下方按钮生成一次性授权二维码。",
     identity_mismatch: "当前 CLI 已授权的身份与 IDEAOS_FEISHU_ARCHIVE_AS 不一致。请更新本机配置后重新检测。",
-    authenticated_unverified: "已确认当前飞书用户授权可用，您可以实际使用确认飞书归档效果了。",
+    authenticated_unverified: isBotIdentity
+      ? "已确认当前飞书 Bot 身份可用，您可以实际使用确认飞书归档效果了。若归档未成功，通常是 Bot 还缺少创建云文档的权限。请在本机终端运行下方测试命令；若输出包含 console_url，请自行打开该网址补充所提示的权限，再返回 ThinkOR 重试归档。"
+      : "已确认当前飞书用户授权可用，您可以实际使用确认飞书归档效果了。若归档未成功，请检查当前用户是否已获得 Docs 和 Drive 授权，再返回 ThinkOR 重试归档。",
   };
   runtimeLarkGuideCopy.textContent = messages[lark.availability] || "请重新检测飞书 CLI 状态。";
   if (runtimeLarkCommand instanceof HTMLElement) {
     const isCliMissing = lark.availability === "cli_missing";
     const isCliUnconfigured = lark.availability === "cli_unconfigured";
-    runtimeLarkCommand.textContent = isCliUnconfigured
-      ? "lark-cli config init --new"
-      : "npm install -g @larksuite/cli";
-    runtimeLarkCommand.classList.toggle("hidden", !isCliMissing && !isCliUnconfigured);
+    const showBotPermissionTest = lark.availability === "authenticated_unverified" && isBotIdentity;
+    runtimeLarkCommand.textContent = showBotPermissionTest
+      ? 'lark-cli docs +create --as bot --title "bot测试" --content "测试内容" --doc-format markdown 2>&1'
+      : isCliUnconfigured
+        ? "lark-cli config init --new"
+        : "npm install -g @larksuite/cli";
+    runtimeLarkCommand.classList.toggle(
+      "hidden",
+      !isCliMissing && !isCliUnconfigured && !showBotPermissionTest,
+    );
   }
   if (runtimeLarkAuthorizeButton instanceof HTMLButtonElement) {
-    runtimeLarkAuthorizeButton.classList.toggle("hidden", lark.availability !== "unauthenticated");
+    runtimeLarkAuthorizeButton.classList.toggle(
+      "hidden",
+      lark.availability !== "unauthenticated" || isBotIdentity,
+    );
   }
 }
 
