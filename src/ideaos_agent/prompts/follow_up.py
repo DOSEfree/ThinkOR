@@ -27,12 +27,14 @@ class FollowUpPromptBuilder:
    assumptions
    open_questions
    refinement_result
+   clarification_rationale
 3. input_echo 只忠实复述【当前这次 follow-up 问题】本身，不要混入原始想法或旧分析。
 4. archive_title 仍应输出一个简短、可读、偏名词短语的语义标题。
 5. 如果进入澄清模式：
    - needs_clarification = true
    - open_questions 提供 2 到 3 个最关键的问题
    - refinement_result = null
+   - clarification_rationale 说明“为什么还需要追问”
 6. 如果直接完善：
    - needs_clarification = false
    - refinement_result 必须包含且只包含以下字段：
@@ -57,6 +59,7 @@ class FollowUpPromptBuilder:
    - updated_text 必须为 null
 12. next_actions 必须是字符串数组，可以为空数组。
 13. 不要输出 section_updates、updated_section、final_plan、analysis 这类替代字段。
+14. clarification_rationale 必须输出一句简短理由（为什么直接完善 / 为什么追问）。
 """.strip()
 
     def build_refinement_prompt(

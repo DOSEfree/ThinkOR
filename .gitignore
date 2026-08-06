@@ -22,9 +22,13 @@ htmlcov/
 # IDE
 .idea/
 .vscode/
+.claude/
 
 # Local-only project materials
-docs/
+docs/*
+!docs/planning/
+docs/planning/*
+!docs/planning/ROADMAP.md
 .cursor/
 .github/ISSUE_TEMPLATE/docs.md
 临时文件夹-ThinkOR/

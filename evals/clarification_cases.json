@@ -1,0 +1,96 @@
+{
+  "description": "澄清判定回归测试集：期望行为随提示词版本演进，改 prompt 前后各跑一次 evals/run_eval.py 对比。",
+  "categories": ["vague", "clear", "personal", "commercial", "explicit_analysis", "edge"],
+  "cases": [
+    {
+      "id": "vague-01",
+      "category": "vague",
+      "input": "我想做一个工具。",
+      "expected": { "needs_clarification": true, "reason": "看不出做什么，也没有核心输入输出。", "note": "目标基线：模糊想法澄清率 > 80%" }
+    },
+    {
+      "id": "vague-02",
+      "category": "vague",
+      "input": "我有个想法，想听听你的看法。",
+      "expected": { "needs_clarification": true, "reason": "没有任何可分析的内容，必须先澄清。" }
+    },
+    {
+      "id": "vague-03",
+      "category": "vague",
+      "input": "我想做一个 App。",
+      "expected": { "needs_clarification": true, "reason": "只有形态没有功能，方向性信息缺失。" }
+    },
+    {
+      "id": "clear-01",
+      "category": "clear",
+      "input": "我想做一个 Web 工具，帮独立开发者把产品想法转成结构化可行性分析报告，输入是想法文本，输出是报告。",
+      "expected": { "needs_clarification": false, "reason": "做什么、输入输出、形态都已明确。" }
+    },
+    {
+      "id": "clear-02",
+      "category": "clear",
+      "input": "我想做一个 SaaS，让用户上传照片后自动生成影集。",
+      "expected": { "needs_clarification": false, "reason": "核心动作与输入输出明确。" }
+    },
+    {
+      "id": "clear-03",
+      "category": "clear",
+      "input": "我想做一个帮 HR 自动筛选简历的工具，输入简历，输出候选人排名。",
+      "expected": { "needs_clarification": false, "reason": "输入输出清晰，可直接分析。" }
+    },
+    {
+      "id": "personal-01",
+      "category": "personal",
+      "input": "我想写个小脚本自动整理我下载的电子书，只给自己用。",
+      "expected": { "needs_clarification": false, "reason": "个人自用工具，形态与动作清楚。" }
+    },
+    {
+      "id": "personal-02",
+      "category": "personal",
+      "input": "我想给自己做一个记账的小工具，不打算给别人用。",
+      "expected": { "needs_clarification": false, "reason": "个人自用，输入输出明确。" }
+    },
+    {
+      "id": "commercial-01",
+      "category": "commercial",
+      "input": "我想做一个面向中小商家的会员管理 SaaS，目标是要收费。",
+      "expected": { "needs_clarification": false, "reason": "商业定位与产品形态都明确。" }
+    },
+    {
+      "id": "explicit-01",
+      "category": "explicit_analysis",
+      "input": "请分析一下：我想做个东西，但还没想清楚。",
+      "expected": { "needs_clarification": false, "reason": "用户明确要求分析，无论多模糊都先分析。", "note": "目标基线：明确要求分析澄清率 = 0%" }
+    },
+    {
+      "id": "explicit-02",
+      "category": "explicit_analysis",
+      "input": "帮我分析：我想做一个产品，具体做什么还没定。",
+      "expected": { "needs_clarification": false, "reason": "用户明确要求分析，不要追问。" }
+    },
+    {
+      "id": "edge-01",
+      "category": "edge",
+      "input": "我想做一个帮人减肥的产品。",
+      "expected": { "needs_clarification": true, "reason": "只有目标没有具体动作与输入输出。" }
+    },
+    {
+      "id": "edge-02",
+      "category": "edge",
+      "input": "我想做一个工具，主要给自己用，但以后也许能卖。",
+      "expected": { "needs_clarification": false, "reason": "已有方案轮廓，边界模糊不致命。" }
+    },
+    {
+      "id": "edge-03",
+      "category": "edge",
+      "input": "我想做一个游戏。",
+      "expected": { "needs_clarification": true, "reason": "类型、平台、玩法都缺失，方向性信息不足。" }
+    },
+    {
+      "id": "edge-04",
+      "category": "edge",
+      "input": "我想做一个帮助内容创作者管理多平台发布的工具，一键把文章同步到公众号、知乎和小红书。",
+      "expected": { "needs_clarification": false, "reason": "功能、目标用户、输入输出都清楚。" }
+    }
+  ]
+}

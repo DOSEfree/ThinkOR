@@ -154,6 +154,17 @@
                 placeholder="输入一句想法以开始，例如：我想做一个帮助独立开发者快速验证产品想法的工具。"
                 required
               ></textarea>
+              <div class="idea-intent-row">
+                <label class="idea-intent-label" for="idea-intent">想法意图 / INTENT</label>
+                <select class="idea-intent-select" id="idea-intent" name="intent">
+                  <option value="">不指定（由 AI 判断）</option>
+                  <option value="chat">只是想聊聊</option>
+                  <option value="personal">个人自用</option>
+                  <option value="product">想做成产品</option>
+                  <option value="decided">已决定要做</option>
+                </select>
+                <span class="idea-intent-hint">意图会影响市场与可行性维度的分析侧重</span>
+              </div>
               <div class="idea-actions">
                 <button class="idea-submit" id="idea-submit" type="submit">分析 / ANALYZE</button>
                 <button class="idea-reset" id="idea-reset" type="button">重置 / RESET</button>

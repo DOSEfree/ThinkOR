@@ -39,6 +39,11 @@ class IdeaInput(BaseModel):
         description="Optional one-round clarification answers.",
     )
 
+    intent: str | None = Field(
+        default=None,
+        description="Optional declared intent: chat / personal / product / decided.",
+    )
+
     @field_validator("content")
     @classmethod
     def validate_content_not_blank(cls, value: str) -> str:
@@ -58,6 +63,18 @@ class IdeaInput(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("session_id must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent(cls, value: str | None) -> str | None:
+        """Reject blank or unknown intent values while allowing null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product", "decided"}:
+            raise ValueError("intent must be one of: chat, personal, product, decided.")
         return normalized
 
 
@@ -80,6 +97,14 @@ class IdeaAnalysisLlmOutput(BaseModel):
     analysis: IdeaAnalysis | None = Field(
         default=None,
         description="Full analysis when clarification is no longer needed.",
+    )
+
+    clarification_rationale: str | None = Field(
+        default=None,
+        description=(
+            "Short reason for the clarification decision: why questions were asked "
+            "or why analysis proceeded directly."
+        ),
     )
 
     @field_validator("archive_title", "input_echo")
@@ -111,6 +136,17 @@ class IdeaAnalysisLlmOutput(BaseModel):
                 raise ValueError("analysis must exist when clarification is not needed.")
 
         return self
+
+
+    @field_validator("clarification_rationale")
+    @classmethod
+    def validate_rationale_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank-only rationale to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
@@ -244,6 +280,11 @@ class FollowUpLlmOutput(BaseModel):
         description="Structured refinement result when clarification is no longer needed.",
     )
 
+    clarification_rationale: str | None = Field(
+        default=None,
+        description="Short reason for this follow-up clarification decision.",
+    )
+
     @field_validator("archive_title", "input_echo")
     @classmethod
     def validate_required_text_not_blank(cls, value: str) -> str:
@@ -277,6 +318,15 @@ class FollowUpLlmOutput(BaseModel):
                 )
 
         return self
+    @field_validator("clarification_rationale")
+    @classmethod
+    def validate_rationale_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank-only rationale to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class FollowUpResponse(FollowUpLlmOutput):
