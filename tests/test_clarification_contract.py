@@ -23,7 +23,8 @@ VALID_CATEGORIES = {"vague", "clear", "personal", "commercial", "explicit_analys
 def test_prompt_contains_judgment_protocol_and_rationale_requirement() -> None:
     builder = IdeaAnalysisPromptBuilder()
 
-    assert "改变分析结论" in builder.system_prompt
+    assert "无条件直接分析" in builder.system_prompt
+    assert "初步、方向性" in builder.system_prompt
     assert "clarification_rationale" in builder.system_prompt
     assert "个人自用" in builder.system_prompt
 
@@ -36,14 +37,17 @@ def test_prompt_includes_intent_label() -> None:
     builder = IdeaAnalysisPromptBuilder()
 
     personal_prompt = builder.build_user_prompt("我想做一个工具。", [], intent="personal")
-    assert "个人自用" in personal_prompt
-    assert "不打算做成商业化产品" in personal_prompt
+    assert "自己用" in personal_prompt
+    assert "不做商业化" in personal_prompt
 
     default_prompt = builder.build_user_prompt("我想做一个工具。", [])
     assert "未指定（由你判断）" in default_prompt
 
     product_prompt = builder.build_user_prompt("我想做一个工具。", [], intent="product")
-    assert "想做成产品" in product_prompt
+    assert "产品化" in product_prompt
+
+    chat_prompt = builder.build_user_prompt("我想做一个工具。", [], intent="chat")
+    assert "随便聊聊" in chat_prompt
 
 
 def test_idea_input_validates_intent() -> None:
@@ -52,6 +56,9 @@ def test_idea_input_validates_intent() -> None:
 
     with pytest.raises(ValidationError):
         IdeaInput(content="做一个工具", intent="unknown")
+
+    with pytest.raises(ValidationError):
+        IdeaInput(content="做一个工具", intent="decided")
 
 
 def test_parser_accepts_and_normalizes_rationale() -> None:

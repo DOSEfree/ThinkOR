@@ -573,3 +573,41 @@ def test_retry_failed_archive_endpoint_reuses_persisted_session(
 
     assert duplicate_retry_response.status_code == 409
     assert duplicate_retry_response.json()["detail"]["code"] == "archive_retry_not_allowed"
+
+
+def test_idea_analysis_echoes_declared_intent_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "我想做一个帮助独立开发者验证产品想法的工具。",
+            "intent": "product",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["intent"] == "product"
+
+
+def test_idea_analysis_rejects_removed_decided_intent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IDEAOS_USE_FAKE_LLM", "true")
+    monkeypatch.setenv("IDEAOS_USE_FAKE_ARCHIVE", "true")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/idea-analysis",
+        json={
+            "content": "我想做一个帮助独立开发者验证产品想法的工具。",
+            "intent": "decided",
+        },
+    )
+
+    assert response.status_code == 422
+

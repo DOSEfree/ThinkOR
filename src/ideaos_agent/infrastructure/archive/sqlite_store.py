@@ -48,6 +48,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         formal_version_number,
                         original_content,
                         input_echo,
+                        intent,
                         clarification_count,
                         archive_status,
                         archive_url,
@@ -56,7 +57,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         completed_at,
                         archived_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._record_to_row(persisted_record),
                 )
@@ -71,6 +72,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         formal_version_number = ?,
                         original_content = ?,
                         input_echo = ?,
+                        intent = ?,
                         clarification_count = ?,
                         archive_status = ?,
                         archive_url = ?,
@@ -87,6 +89,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         persisted_record.formal_version_number,
                         persisted_record.original_content,
                         persisted_record.input_echo,
+                        persisted_record.intent,
                         persisted_record.clarification_count,
                         persisted_record.archive_status.value,
                         persisted_record.archive_url,
@@ -118,6 +121,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     formal_version_number,
                     original_content,
                     input_echo,
+                    intent,
                     clarification_count,
                     archive_status,
                     archive_url,
@@ -147,6 +151,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             formal_version_number=self._nullable_int(row["formal_version_number"]),
             original_content=str(row["original_content"]),
             input_echo=str(row["input_echo"]),
+            intent=self._nullable_text(row["intent"]),
             clarification_count=int(row["clarification_count"]),
             archive_status=ArchiveStatus(str(row["archive_status"])),
             archive_url=self._nullable_text(row["archive_url"]),
@@ -175,6 +180,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 formal_version_number,
                 original_content,
                 input_echo,
+                intent,
                 clarification_count,
                 archive_status,
                 archive_url,
@@ -254,6 +260,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         archive_title,
                         original_content,
                         input_echo,
+                        intent,
                         follow_up_question,
                         clarifications_json,
                         assumptions_json,
@@ -264,7 +271,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         completed_at,
                         archived_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._snapshot_to_row(persisted_snapshot),
                 )
@@ -280,6 +287,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         archive_title = ?,
                         original_content = ?,
                         input_echo = ?,
+                        intent = ?,
                         follow_up_question = ?,
                         clarifications_json = ?,
                         assumptions_json = ?,
@@ -299,6 +307,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                         persisted_snapshot.archive_title,
                         persisted_snapshot.original_content,
                         persisted_snapshot.input_echo,
+                        persisted_snapshot.intent,
                         persisted_snapshot.follow_up_question,
                         self._to_json(
                             [item.model_dump() for item in persisted_snapshot.clarifications]
@@ -343,6 +352,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     archive_title,
                     original_content,
                     input_echo,
+                    intent,
                     follow_up_question,
                     clarifications_json,
                     assumptions_json,
@@ -396,6 +406,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 archive_title,
                 original_content,
                 input_echo,
+                    intent,
                 follow_up_question,
                 clarifications_json,
                 assumptions_json,
@@ -477,6 +488,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     formal_version_number INTEGER,
                     original_content TEXT NOT NULL,
                     input_echo TEXT NOT NULL,
+                    intent TEXT,
                     clarification_count INTEGER NOT NULL,
                     archive_status TEXT NOT NULL,
                     archive_url TEXT,
@@ -505,6 +517,8 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 connection.execute(
                     "ALTER TABLE session_records ADD COLUMN formal_version_number INTEGER"
                 )
+            if "intent" not in record_columns:
+                connection.execute("ALTER TABLE session_records ADD COLUMN intent TEXT")
             self._migrate_legacy_fake_archive_urls(connection)
 
             connection.execute(
@@ -518,6 +532,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                     archive_title TEXT NOT NULL,
                     original_content TEXT NOT NULL,
                     input_echo TEXT NOT NULL,
+                    intent TEXT,
                     follow_up_question TEXT,
                     clarifications_json TEXT NOT NULL,
                     assumptions_json TEXT NOT NULL,
@@ -541,6 +556,8 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
                 connection.execute(
                     "ALTER TABLE session_snapshots ADD COLUMN formal_version_number INTEGER"
                 )
+            if "intent" not in snapshot_columns:
+                connection.execute("ALTER TABLE session_snapshots ADD COLUMN intent TEXT")
             self._backfill_formal_version_numbers(connection)
 
     @staticmethod
@@ -580,6 +597,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             record.formal_version_number,
             record.original_content,
             record.input_echo,
+            record.intent,
             record.clarification_count,
             record.archive_status.value,
             record.archive_url,
@@ -629,6 +647,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             snapshot.archive_title,
             snapshot.original_content,
             snapshot.input_echo,
+            snapshot.intent,
             snapshot.follow_up_question,
             self._to_json([item.model_dump() for item in snapshot.clarifications]),
             self._to_json(snapshot.assumptions),
@@ -674,6 +693,7 @@ class SqliteSessionArchiveStore(SessionArchiveStore, SessionSnapshotStore):
             archive_title=str(row["archive_title"]),
             original_content=str(row["original_content"]),
             input_echo=str(row["input_echo"]),
+            intent=self._nullable_text(row["intent"]),
             follow_up_question=self._nullable_text(row["follow_up_question"]),
             clarifications=[
                 SessionClarificationRecord.model_validate(item) for item in clarifications_data

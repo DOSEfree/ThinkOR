@@ -161,10 +161,11 @@ class InMemoryArchiver:
         )
 
 
-def build_service() -> SessionHistoryService:
+def build_service(archiver: InMemoryArchiver | None = None) -> SessionHistoryService:
     archive_store = InMemoryArchiveStore()
     snapshot_store = InMemorySnapshotStore()
-    archiver = InMemoryArchiver()
+    if archiver is None:
+        archiver = InMemoryArchiver()
 
     root_time = datetime.now(UTC) - timedelta(days=1)
     refine_time = root_time + timedelta(hours=1)
@@ -968,3 +969,44 @@ def test_retry_failed_archive_rejects_non_failed_sessions() -> None:
         "sess_root",
         "sess_composed",
     ]
+
+
+class RaisingDeleteArchiver(InMemoryArchiver):
+    """Archiver whose remote delete raises to simulate adapter failures."""
+
+    def delete_archive(self, archive_url: str) -> ArchiveDeleteResult:
+        raise RuntimeError("simulated lark-cli failure")
+
+
+def test_delete_thread_survives_remote_delete_exception() -> None:
+    service = build_service(RaisingDeleteArchiver())
+
+    response = service.delete_thread("sess_root")
+
+    assert response.root_session_id == "sess_root"
+    assert response.deleted_session_count == 3
+    assert response.deleted_archive_count == 0
+    assert len(response.archive_delete_failures) == 2
+    assert all(
+        "simulated lark-cli failure" in item.error
+        for item in response.archive_delete_failures
+    )
+
+    try:
+        service.get_thread("sess_root")
+    except SessionNotFoundError:
+        pass
+    else:
+        raise AssertionError("Expected thread to be deleted locally despite remote failures.")
+
+
+def test_delete_leaf_session_survives_remote_delete_exception() -> None:
+    service = build_service(RaisingDeleteArchiver())
+
+    response = service.delete_leaf_session("sess_composed")
+
+    assert response.deleted_session_count == 1
+    assert response.deleted_archive_count == 0
+    assert len(response.archive_delete_failures) == 1
+    assert "simulated lark-cli failure" in response.archive_delete_failures[0].error
+

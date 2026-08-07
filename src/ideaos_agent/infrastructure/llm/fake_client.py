@@ -59,7 +59,7 @@ class FakeLlmClient(LlmClient):
         market_copy = (
             "个人自用场景下，价值在于用最低成本判断一个想法值不值得继续投入，"
             "不需要考虑商业化路径。"
-            if "个人自用" in intent
+            if "自己用" in intent or "个人自用" in intent
             else "独立开发者与早期产品探索者有明确需求，但需要找到差异化入口。"
         )
 

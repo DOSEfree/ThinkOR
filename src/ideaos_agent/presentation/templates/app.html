@@ -158,12 +158,11 @@
                 <label class="idea-intent-label" for="idea-intent">想法意图 / INTENT</label>
                 <select class="idea-intent-select" id="idea-intent" name="intent">
                   <option value="">不指定（由 AI 判断）</option>
-                  <option value="chat">只是想聊聊</option>
-                  <option value="personal">个人自用</option>
-                  <option value="product">想做成产品</option>
-                  <option value="decided">已决定要做</option>
+                  <option value="chat">随便聊聊</option>
+                  <option value="personal">自己用</option>
+                  <option value="product">产品化</option>
                 </select>
-                <span class="idea-intent-hint">意图会影响市场与可行性维度的分析侧重</span>
+                <span class="idea-intent-hint">模式会决定方案的类型、侧重与展示颜色</span>
               </div>
               <div class="idea-actions">
                 <button class="idea-submit" id="idea-submit" type="submit">分析 / ANALYZE</button>
@@ -279,6 +278,21 @@
           <span>确认删除</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <div
+    class="delete-status-dialog hidden"
+    id="delete-status-dialog"
+    role="status"
+    aria-live="polite"
+    aria-labelledby="delete-status-dialog-title"
+  >
+    <div class="delete-status-dialog-card">
+      <span class="delete-status-spinner" aria-hidden="true"></span>
+      <p class="delete-status-dialog-kicker">删除 / DELETE</p>
+      <h2 id="delete-status-dialog-title">正在删除…</h2>
+      <p class="delete-status-dialog-message" id="delete-status-dialog-message"></p>
     </div>
   </div>
 

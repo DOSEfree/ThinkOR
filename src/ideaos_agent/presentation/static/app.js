@@ -24,6 +24,9 @@ const loadingDialogMessageSecondary = document.getElementById("loading-dialog-me
 const loadingDialogElapsed = document.getElementById("loading-dialog-elapsed");
 const deleteConfirmDialog = document.getElementById("delete-confirm-dialog");
 const deleteConfirmDialogMessage = document.getElementById("delete-confirm-dialog-message");
+const deleteStatusDialog = document.getElementById("delete-status-dialog");
+const deleteStatusDialogTitle = document.getElementById("delete-status-dialog-title");
+const deleteStatusDialogMessage = document.getElementById("delete-status-dialog-message");
 const deleteConfirmCancelButton = document.getElementById("delete-confirm-cancel");
 const deleteConfirmSubmitButton = document.getElementById("delete-confirm-submit");
 const archiveRetryDialog = document.getElementById("archive-retry-dialog");
@@ -86,6 +89,8 @@ let loadingElapsedTimerId = null;
 let archiveRetrySessionId = null;
 let failedRequestRetry = null;
 let pendingDeleteAction = null;
+let pendingThreadDeleteRootId = null;
+let pendingSessionDeleteId = null;
 let activeLarkSetupFlowId = null;
 let pendingProfileAvatar = null;
 
@@ -1644,7 +1649,12 @@ async function handleDeleteHistorySession(sessionId, triggerButton) {
 }
 
 async function deleteHistorySession(sessionId, triggerButton) {
-  setLoadingState(true, "DELETE VERSION", triggerButton);
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!normalizedSessionId || pendingSessionDeleteId !== null) {
+    return;
+  }
+  pendingSessionDeleteId = normalizedSessionId;
+  showDeleteStatus("deleting");
   clearFeedback();
 
   try {
@@ -1653,10 +1663,21 @@ async function deleteHistorySession(sessionId, triggerButton) {
     });
     const data = await response.json().catch(() => ({}));
 
+    if (response.status === 404) {
+      showDeleteStatus("success", "该版本可能已被删除，历史已刷新。");
+      window.setTimeout(hideDeleteStatus, 1400);
+      await loadRecentSessions();
+      return;
+    }
+
     if (!response.ok) {
+      hideDeleteStatus();
       renderApiError(data, "Failed to delete version.");
       return;
     }
+
+    showDeleteStatus("success");
+    window.setTimeout(hideDeleteStatus, 1400);
 
     const rootSessionId = typeof data.root_session_id === "string" ? data.root_session_id : "";
     const parentSessionId = typeof data.parent_session_id === "string"
@@ -1693,9 +1714,10 @@ async function deleteHistorySession(sessionId, triggerButton) {
       );
     }
   } catch (_error) {
+    hideDeleteStatus();
     renderError("Failed to delete version.");
   } finally {
-    setLoadingState(false, "分析 / ANALYZE", triggerButton);
+    pendingSessionDeleteId = null;
   }
 }
 
@@ -1712,7 +1734,12 @@ async function handleDeleteHistoryThread(rootSessionId, triggerButton) {
 }
 
 async function deleteHistoryThread(rootSessionId, triggerButton) {
-  setLoadingState(true, "DELETE THREAD", triggerButton);
+  const normalizedRootSessionId = typeof rootSessionId === "string" ? rootSessionId.trim() : "";
+  if (!normalizedRootSessionId || pendingThreadDeleteRootId !== null) {
+    return;
+  }
+  pendingThreadDeleteRootId = normalizedRootSessionId;
+  showDeleteStatus("deleting");
   clearFeedback();
 
   try {
@@ -1721,13 +1748,18 @@ async function deleteHistoryThread(rootSessionId, triggerButton) {
     });
     const data = await response.json().catch(() => ({}));
 
+    if (response.status === 404) {
+      finishThreadDelete(normalizedRootSessionId, "该线程可能已被删除，历史已刷新。");
+      return;
+    }
+
     if (!response.ok) {
+      hideDeleteStatus();
       renderApiError(data, "Failed to delete thread.");
       return;
     }
 
-    clearDeletedThreadState(normalizedRootSessionId);
-    await loadRecentSessions();
+    finishThreadDelete(normalizedRootSessionId);
 
     const failures = Array.isArray(data.archive_delete_failures)
       ? data.archive_delete_failures
@@ -1738,10 +1770,44 @@ async function deleteHistoryThread(rootSessionId, triggerButton) {
       );
     }
   } catch (_error) {
+    hideDeleteStatus();
     renderError("Failed to delete thread.");
   } finally {
-    setLoadingState(false, "分析 / ANALYZE", triggerButton);
+    pendingThreadDeleteRootId = null;
   }
+}
+
+
+function showDeleteStatus(kind, note) {
+  if (!(deleteStatusDialog instanceof HTMLElement)) {
+    return;
+  }
+  const META = {
+    deleting: { title: "正在删除…", note: "请稍候，正在删除本地链路与关联归档。" },
+    success: { title: "删除成功", note: "已从本地历史移除。" },
+  };
+  const meta = META[kind] || META.success;
+  deleteStatusDialog.dataset.kind = kind;
+  if (deleteStatusDialogTitle instanceof HTMLElement) {
+    deleteStatusDialogTitle.textContent = meta.title;
+  }
+  if (deleteStatusDialogMessage instanceof HTMLElement) {
+    deleteStatusDialogMessage.textContent = note || meta.note;
+  }
+  deleteStatusDialog.classList.remove("hidden");
+}
+
+function hideDeleteStatus() {
+  if (deleteStatusDialog instanceof HTMLElement) {
+    deleteStatusDialog.classList.add("hidden");
+  }
+}
+
+function finishThreadDelete(rootSessionId, note) {
+  clearDeletedThreadState(rootSessionId);
+  void loadRecentSessions();
+  showDeleteStatus("success", note);
+  window.setTimeout(hideDeleteStatus, 1400);
 }
 
 function showDeleteConfirmation(message, deleteAction) {
@@ -1979,6 +2045,7 @@ function renderAnalysisView(payload, rawContent, clarifications) {
       "The analysis is ready. You can review it, check archive feedback, and continue with follow-up refinement.",
       "success",
     )}
+    ${renderIntentBadge(payload.intent)}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}
@@ -1992,6 +2059,24 @@ function renderAnalysisView(payload, rawContent, clarifications) {
     ${renderFollowUpActions()}
   `;
   showContent();
+}
+
+function renderIntentBadge(intent) {
+  const MODES = {
+    chat: { label: "随便聊聊", icon: "💬", cls: "intent-badge--chat" },
+    personal: { label: "自己用", icon: "🛠️", cls: "intent-badge--personal" },
+    product: { label: "产品化", icon: "🚀", cls: "intent-badge--product" },
+  };
+  const mode = MODES[intent];
+  if (!mode) {
+    return "";
+  }
+  return `
+    <span class="intent-badge ${mode.cls}">
+      <span class="intent-badge-icon" aria-hidden="true">${mode.icon}</span>
+      <span>${mode.label}</span>
+    </span>
+  `;
 }
 
 function renderFollowUpComposer() {
@@ -2207,6 +2292,7 @@ function renderComposedPlanView(payload) {
       "success",
     )}
     ${renderCompletionNotice(payload)}
+    ${renderIntentBadge(payload.intent)}
     ${renderArchivePanel(payload)}
     ${renderInputEcho(payload.input_echo)}
     ${renderAssumptions(assumptions)}

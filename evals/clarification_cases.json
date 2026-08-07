@@ -78,7 +78,7 @@
       "id": "edge-02",
       "category": "edge",
       "input": "我想做一个工具，主要给自己用，但以后也许能卖。",
-      "expected": { "needs_clarification": false, "reason": "已有方案轮廓，边界模糊不致命。" }
+      "expected": { "needs_clarification": true, "reason": "工具核心功能完全未定，追问核心功能可接受（按真实基线校准）。" }
     },
     {
       "id": "edge-03",
