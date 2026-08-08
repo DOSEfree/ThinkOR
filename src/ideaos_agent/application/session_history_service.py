@@ -125,6 +125,7 @@ class SessionHistoryService:
             archive_title=snapshot.archive_title,
             original_content=snapshot.original_content,
             input_echo=snapshot.input_echo,
+            intent=snapshot.intent,
             clarifications=[
                 ClarificationAnswer(question=item.question, answer=item.answer)
                 for item in snapshot.clarifications
@@ -177,6 +178,7 @@ class SessionHistoryService:
             archive_title=snapshot.archive_title,
             original_content=snapshot.original_content,
             input_echo=snapshot.input_echo,
+            intent=snapshot.intent,
             clarifications=snapshot.clarifications,
             assumptions=snapshot.assumptions,
             open_questions=snapshot.open_questions,
@@ -396,7 +398,16 @@ class SessionHistoryService:
         deleted_archive_count = 0
         archive_delete_failures: list[ArchiveDeleteFailure] = []
         for archive_url in archive_urls:
-            delete_result = self._session_archiver.delete_archive(archive_url)
+            try:
+                delete_result = self._session_archiver.delete_archive(archive_url)
+            except Exception as exc:
+                archive_delete_failures.append(
+                    ArchiveDeleteFailure(
+                        archive_url=archive_url,
+                        error=f"Remote archive delete raised an error: {exc}",
+                    )
+                )
+                continue
             if delete_result.deleted:
                 deleted_archive_count += 1
                 continue
@@ -468,7 +479,16 @@ class SessionHistoryService:
                 continue
 
             deleted_archive_urls.add(current_record.archive_url)
-            delete_result = self._session_archiver.delete_archive(current_record.archive_url)
+            try:
+                delete_result = self._session_archiver.delete_archive(current_record.archive_url)
+            except Exception as exc:
+                archive_delete_failures.append(
+                    ArchiveDeleteFailure(
+                        archive_url=current_record.archive_url,
+                        error=f"Remote archive delete raised an error: {exc}",
+                    )
+                )
+                continue
             if delete_result.deleted:
                 deleted_archive_count += 1
                 continue
@@ -528,6 +548,7 @@ class SessionHistoryService:
             archive_title=snapshot.archive_title,
             archive_status=archive_status,
             archive_url=archive_url,
+            intent=snapshot.intent,
             created_at=snapshot.created_at,
             updated_at=snapshot.updated_at,
             can_delete_leaf=can_delete_leaf,

@@ -39,6 +39,11 @@ class IdeaInput(BaseModel):
         description="Optional one-round clarification answers.",
     )
 
+    intent: str | None = Field(
+        default=None,
+        description="Optional declared intent mode: chat / personal / product.",
+    )
+
     @field_validator("content")
     @classmethod
     def validate_content_not_blank(cls, value: str) -> str:
@@ -58,6 +63,18 @@ class IdeaInput(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("session_id must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent(cls, value: str | None) -> str | None:
+        """Reject blank or unknown intent values while allowing null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product"}:
+            raise ValueError("intent must be one of: chat, personal, product.")
         return normalized
 
 
@@ -80,6 +97,14 @@ class IdeaAnalysisLlmOutput(BaseModel):
     analysis: IdeaAnalysis | None = Field(
         default=None,
         description="Full analysis when clarification is no longer needed.",
+    )
+
+    clarification_rationale: str | None = Field(
+        default=None,
+        description=(
+            "Short reason for the clarification decision: why questions were asked "
+            "or why analysis proceeded directly."
+        ),
     )
 
     @field_validator("archive_title", "input_echo")
@@ -111,6 +136,17 @@ class IdeaAnalysisLlmOutput(BaseModel):
                 raise ValueError("analysis must exist when clarification is not needed.")
 
         return self
+
+
+    @field_validator("clarification_rationale")
+    @classmethod
+    def validate_rationale_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank-only rationale to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
@@ -145,6 +181,10 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
         default=None,
         description="Safe, user-actionable error detail after a failed archive attempt.",
     )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode for this thread: chat / personal / product.",
+    )
 
     @field_validator("session_id", "root_session_id", "parent_session_id", "archive_url")
     @classmethod
@@ -156,6 +196,18 @@ class BaseAnalysisResponse(IdeaAnalysisLlmOutput):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Response text fields must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank or unknown intent modes to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product"}:
+            return None
         return normalized
 
     @model_validator(mode="after")
@@ -244,6 +296,11 @@ class FollowUpLlmOutput(BaseModel):
         description="Structured refinement result when clarification is no longer needed.",
     )
 
+    clarification_rationale: str | None = Field(
+        default=None,
+        description="Short reason for this follow-up clarification decision.",
+    )
+
     @field_validator("archive_title", "input_echo")
     @classmethod
     def validate_required_text_not_blank(cls, value: str) -> str:
@@ -277,6 +334,15 @@ class FollowUpLlmOutput(BaseModel):
                 )
 
         return self
+    @field_validator("clarification_rationale")
+    @classmethod
+    def validate_rationale_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank-only rationale to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class FollowUpResponse(FollowUpLlmOutput):
@@ -310,6 +376,10 @@ class FollowUpResponse(FollowUpLlmOutput):
         default=None,
         description="Archive URL after a successful archive attempt.",
     )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode inherited from the idea thread.",
+    )
 
     @field_validator("session_id", "root_session_id", "parent_session_id", "archive_url")
     @classmethod
@@ -321,6 +391,18 @@ class FollowUpResponse(FollowUpLlmOutput):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Follow-up response text fields must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank or unknown intent modes to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product"}:
+            return None
         return normalized
 
     @model_validator(mode="after")
@@ -415,6 +497,10 @@ class SessionHistoryItem(BaseModel):
     archive_url: str | None = Field(
         default=None,
         description="Archive URL after a successful archive attempt.",
+    )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode for this session, if any.",
     )
     created_at: datetime = Field(description="Creation time of the session.")
     updated_at: datetime = Field(description="Latest update time of the session.")
@@ -746,6 +832,10 @@ class SessionDetailResponse(BaseModel):
     clarifications: list[ClarificationAnswer] = Field(
         default_factory=list,
         description="Clarifications used in the session.",
+    )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode for this session, if any.",
     )
     assumptions: list[str] = Field(default_factory=list, description="System assumptions.")
     open_questions: list[str] = Field(default_factory=list, description="Open questions.")

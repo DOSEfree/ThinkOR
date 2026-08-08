@@ -37,7 +37,11 @@ class IdeaAnalysisService:
         if not self._settings.use_fake_llm and not self._settings.llm_api_key:
             raise LlmNotConfiguredError("尚未配置 LLM API key，请在项目级 .env 中填写。")
 
-        prompt = self._prompt_builder.build_user_prompt(content, payload.clarifications)
+        prompt = self._prompt_builder.build_user_prompt(
+            content,
+            payload.clarifications,
+            intent=payload.intent,
+        )
         response_text = self._llm_client.generate_text(
             system_prompt=self._prompt_builder.system_prompt,
             user_prompt=prompt,

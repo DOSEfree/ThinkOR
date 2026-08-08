@@ -89,6 +89,7 @@ class IdeaAnalysisSessionService:
             parent_formal_version_number=None,
             archive_status=final_record.archive_status,
             archive_url=final_record.archive_url,
+            intent=payload.intent,
             **llm_output.model_dump(),
         )
 
@@ -115,6 +116,7 @@ class IdeaAnalysisSessionService:
             formal_version_number=1,
             original_content=payload.content,
             input_echo=llm_output.input_echo,
+            intent=payload.intent,
             clarification_count=len(payload.clarifications),
             archive_status=archive_status,
             archive_url=archive_url,
@@ -144,6 +146,7 @@ class IdeaAnalysisSessionService:
             archive_title=llm_output.archive_title,
             original_content=payload.content,
             input_echo=llm_output.input_echo,
+            intent=payload.intent,
             clarifications=[
                 SessionClarificationRecord(question=item.question, answer=item.answer)
                 for item in payload.clarifications
@@ -174,6 +177,7 @@ class IdeaAnalysisSessionService:
             archive_title=snapshot.archive_title,
             original_content=snapshot.original_content,
             input_echo=snapshot.input_echo,
+            intent=snapshot.intent,
             clarifications=snapshot.clarifications,
             assumptions=snapshot.assumptions,
             open_questions=snapshot.open_questions,

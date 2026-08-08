@@ -18,7 +18,7 @@ class FakeLlmClient(LlmClient):
 
     def _generate_analysis_response(self, user_prompt: str) -> str:
         raw_input = _extract_section(user_prompt, "【原始想法】", "【已有澄清回答】")
-        clarification_block = _extract_section(user_prompt, "【已有澄清回答】", "【任务要求】")
+        clarification_block = _extract_section(user_prompt, "【已有澄清回答】", "【想法意图】")
         has_clarifications = clarification_block.strip() not in {"无", ""}
         has_solution_outline = any(
             marker in raw_input
@@ -46,10 +46,22 @@ class FakeLlmClient(LlmClient):
                         "这个工具最核心要帮用户完成的验证动作是什么？",
                         "用户输入什么，系统要返回什么结果？",
                     ],
+                    "clarification_rationale": (
+                        "当前输入还看不出这个想法具体做什么，缺少核心动作与输入输出，"
+                        "因此需要先澄清。"
+                    ),
                     "analysis": None,
                 },
                 ensure_ascii=False,
             )
+
+        intent = _extract_intent(user_prompt)
+        market_copy = (
+            "个人自用场景下，价值在于用最低成本判断一个想法值不值得继续投入，"
+            "不需要考虑商业化路径。"
+            if "自己用" in intent or "个人自用" in intent
+            else "独立开发者与早期产品探索者有明确需求，但需要找到差异化入口。"
+        )
 
         return json.dumps(
             {
@@ -62,10 +74,14 @@ class FakeLlmClient(LlmClient):
                 "open_questions": [
                     "后续是否需要把分析结果沉淀为可编辑的项目卡片？",
                 ],
+                "clarification_rationale": (
+                    "输入已经形成可分析的解决方案轮廓，缺失的信息不会改变方向性结论，"
+                    "因此直接分析。"
+                ),
                 "analysis": {
                     "summary": "这是一个帮助用户把产品想法转成结构化评估与执行建议的工具。",
                     "feasibility": "技术上可行，关键在于控制分析质量与用户信任预期。",
-                    "market": "独立开发者与早期产品探索者有明确需求，但需要找到差异化入口。",
+                    "market": market_copy,
                     "knowledge_gaps": ["产品验证方法", "Prompt 标准", "结果评估机制"],
                     "resource_gaps": ["真实种子用户", "稳定模型额度", "可对照的分析样本"],
                     "team_requirements": ["产品负责人", "Python 工程师", "AI 应用工程师"],
@@ -96,6 +112,9 @@ class FakeLlmClient(LlmClient):
                         "你最想优先改进的是目标用户、核心功能，还是商业化路径？",
                         "你希望这次修改更偏向产品策略还是执行落地？",
                     ],
+                    "clarification_rationale": (
+                        "这次 follow-up 请求还不足以判断要修改哪个板块，因此先澄清。"
+                    ),
                     "refinement_result": None,
                 },
                 ensure_ascii=False,
@@ -112,6 +131,9 @@ class FakeLlmClient(LlmClient):
                 "open_questions": [
                     "下一轮可以继续打磨报告模板与结果沉淀方式。"
                 ],
+                "clarification_rationale": (
+                    "本次 follow-up 已经能判断要收窄的目标用户板块，因此直接局部完善。"
+                ),
                 "refinement_result": {
                     "question_summary": question or "进一步完善当前方案",
                     "refinement_answer": (
@@ -178,6 +200,12 @@ def _extract_line_value(text: str, prefix: str) -> str:
         if line.startswith(prefix):
             return line.removeprefix(prefix).strip()
     return ""
+
+
+def _extract_intent(text: str) -> str:
+    """Extract the declared intent label from the analysis prompt."""
+
+    return _extract_section(text, "【想法意图】", "【任务要求】").strip()
 
 
 def _looks_like_follow_up_prompt(text: str) -> bool:

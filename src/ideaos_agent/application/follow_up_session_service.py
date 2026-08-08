@@ -80,6 +80,7 @@ class FollowUpSessionService:
             formal_version_number=None,
             original_content=parent_snapshot.original_content,
             input_echo=llm_output.input_echo,
+            intent=parent_snapshot.intent,
             clarification_count=len(payload.clarifications),
             archive_status=archive_status,
             archive_url=None,
@@ -103,6 +104,7 @@ class FollowUpSessionService:
                 archive_title=llm_output.archive_title,
                 original_content=parent_snapshot.original_content,
                 input_echo=llm_output.input_echo,
+                intent=parent_snapshot.intent,
                 clarifications=[
                     SessionClarificationRecord(question=item.question, answer=item.answer)
                     for item in payload.clarifications
@@ -126,6 +128,7 @@ class FollowUpSessionService:
             session_kind=SessionKind.FOLLOW_UP_REFINEMENT,
             archive_status=final_record.archive_status,
             archive_url=final_record.archive_url,
+            intent=parent_snapshot.intent,
             **llm_output.model_dump(),
         )
 
@@ -166,6 +169,7 @@ class FollowUpSessionService:
             formal_version_number=formal_version_number,
             original_content=parent_snapshot.original_content,
             input_echo=refinement_snapshot.input_echo,
+            intent=parent_snapshot.intent,
             clarification_count=len(refinement_snapshot.clarifications),
             archive_status=ArchiveStatus.PENDING,
             archive_url=None,
@@ -182,6 +186,7 @@ class FollowUpSessionService:
             archive_title=refinement_snapshot.archive_title,
             original_content=parent_snapshot.original_content,
             input_echo=refinement_snapshot.input_echo,
+            intent=parent_snapshot.intent,
             clarifications=refinement_snapshot.clarifications,
             assumptions=refinement_snapshot.assumptions,
             open_questions=refinement_snapshot.open_questions,
@@ -211,6 +216,7 @@ class FollowUpSessionService:
             archive_title=persisted_snapshot.archive_title,
             original_content=persisted_snapshot.original_content,
             input_echo=persisted_snapshot.input_echo,
+            intent=persisted_snapshot.intent,
             clarifications=persisted_snapshot.clarifications,
             assumptions=persisted_snapshot.assumptions,
             open_questions=persisted_snapshot.open_questions,
@@ -244,6 +250,7 @@ class FollowUpSessionService:
             archive_url=final_record.archive_url,
             archive_title=persisted_snapshot.archive_title,
             input_echo=persisted_snapshot.input_echo,
+            intent=persisted_snapshot.intent,
             needs_clarification=False,
             assumptions=persisted_snapshot.assumptions,
             open_questions=persisted_snapshot.open_questions,

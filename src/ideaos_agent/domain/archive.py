@@ -47,6 +47,10 @@ class SessionRecord(BaseModel):
         ge=0,
         description="Clarification count carried in the current request.",
     )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode for this session: chat / personal / product.",
+    )
     archive_status: ArchiveStatus = Field(description="Archive state for the session.")
     archive_url: str | None = Field(
         default=None,
@@ -91,6 +95,18 @@ class SessionRecord(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Session record text fields must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank or unknown intent modes to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product"}:
+            return None
         return normalized
 
     @model_validator(mode="after")
@@ -188,6 +204,10 @@ class SessionArchivePayload(BaseModel):
         default_factory=list,
         description="Clarification records for the current session.",
     )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode for this session: chat / personal / product.",
+    )
     assumptions: list[str] = Field(default_factory=list, description="System assumptions.")
     open_questions: list[str] = Field(default_factory=list, description="Open questions.")
     follow_up_question: str | None = Field(
@@ -225,6 +245,18 @@ class SessionArchivePayload(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Archive payload text fields must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank or unknown intent modes to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product"}:
+            return None
         return normalized
 
     @model_validator(mode="after")

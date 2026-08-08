@@ -64,6 +64,10 @@ class SessionSnapshot(BaseModel):
         min_length=1,
         description="Faithful echo of the current session input.",
     )
+    intent: str | None = Field(
+        default=None,
+        description="Declared intent mode for this session: chat / personal / product.",
+    )
     clarifications: list[SessionClarificationRecord] = Field(
         default_factory=list,
         description="Clarifications used in this session.",
@@ -114,6 +118,18 @@ class SessionSnapshot(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Session snapshot text fields must not be blank.")
+        return normalized
+
+    @field_validator("intent")
+    @classmethod
+    def validate_intent_blank_to_none(cls, value: str | None) -> str | None:
+        """Normalize blank or unknown intent modes to null."""
+
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"chat", "personal", "product"}:
+            return None
         return normalized
 
     @model_validator(mode="after")

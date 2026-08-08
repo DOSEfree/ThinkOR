@@ -2,7 +2,9 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ideaos_agent.domain.analysis import IdeaAnalysis
 from ideaos_agent.domain.archive import ArchiveStatus, SessionRecord
+from ideaos_agent.domain.session import SessionKind, SessionSnapshot
 from ideaos_agent.infrastructure.archive.sqlite_store import SqliteSessionArchiveStore
 
 
@@ -120,3 +122,33 @@ def test_sqlite_store_migrates_legacy_fake_archive_url(tmp_path: Path) -> None:
     assert migrated_record.archive_status == ArchiveStatus.SIMULATED
     assert migrated_record.archive_url is None
     assert migrated_record.archived_at == archived_at
+
+
+def test_sqlite_store_round_trips_snapshot_with_intent(tmp_path: Path) -> None:
+    db_path = tmp_path / "ideaos_agent.db"
+    store = SqliteSessionArchiveStore(db_path)
+    snapshot = SessionSnapshot(
+        session_id="sess_intent",
+        root_session_id="sess_intent",
+        session_kind=SessionKind.ANALYSIS,
+        archive_title="个人效率小工具",
+        original_content="我想做一个给自己用的记账小工具。",
+        input_echo="我想做一个给自己用的记账小工具。",
+        intent="personal",
+        analysis=IdeaAnalysis(
+            summary="一个给自己用的记账小工具。",
+            feasibility="简单可行。",
+            market="个人自用价值与成本。",
+        ),
+        completed_at=datetime.now(UTC),
+    )
+
+    saved = store.save_session_snapshot(snapshot)
+    fetched = store.get_session_snapshot("sess_intent")
+
+    assert saved.intent == "personal"
+    assert fetched is not None
+    assert fetched.intent == "personal"
+    assert fetched.analysis is not None
+    assert fetched.analysis.market == "个人自用价值与成本。"
+
